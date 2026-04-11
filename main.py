@@ -1,7 +1,7 @@
 import os
 import json
 import tempfile
-from fastapi import FastAPI, UploadFile, File, Response
+from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import vertexai
@@ -11,7 +11,7 @@ import io
 
 app = FastAPI()
 
-# 1. CORS na wszelki wypadek (zostawiamy '*')
+# 1. CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -38,37 +38,28 @@ def setup_vertex_ai():
 
 setup_vertex_ai()
 
-# Konfiguracja modelu
+# --- KONFIGURACJA MODELI AI ---
+# Model 1: Do analizy zdjęć
 system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
 model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
 
-# --- 2. NOWOŚĆ: WYŚWIETLANIE STRONY GŁÓWNEJ ---
+# Model 2: Do asystenta głosowego (TUTAJ BYŁ BŁĄD SKŁADNIOWY W TWOIM KODZIE)
+voice_instruction = "Jesteś asystentem pierwszej pomocy głosowej. Twoje instrukcje muszą być krótkie (max 2 zdania), spokojne i bardzo konkretne. Użytkownik jest w stresie. Odpowiadaj tak, aby można było cię łatwo zrozumieć ze słuchu."
+voice_model = GenerativeModel("gemini-1.5-flash", system_instruction=voice_instruction)
+
+# --- ENDPOINTY (PUNKTY DOSTĘPU) ---
+
+# Strona główna (Frontend)
 @app.get("/", response_class=HTMLResponse)
 def home():
-    # Pobieramy treść pliku index.html z dysku serwera
     try:
         with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-        return html_content
+            return f.read()
     except FileNotFoundError:
         return "BŁĄD: Nie znaleziono pliku index.html na GitHubie."
 
+# Analiza zdjęcia
 @app.post("/analyze")
-voice_model = GenerativeModel(
-    "gemini-2.5-flash",
-    system_instruction="Jesteś asystentem pierwszej pomocy głosowej. Twoje instrukcje muszą być krótkie (max 2 zdania), spokojne i bardzo konkretne. Użytkownik jest w stresie. Odpowiadaj tak, aby można było cię łatwo zrozumieć ze słuchu."
-)
-
-@app.post("/ask")
-async def ask_ai(data: dict):
-    # data zawiera tekst pytania od użytkownika i kontekst (rodzaj rany)
-    pytanie = data.get("pytanie")
-    rana = data.get("rana")
-    
-    prompt = f"Użytkownik ma problem: {rana}. Pyta: {pytanie}. Odpowiedz krótko co ma zrobić."
-    
-    response = voice_model.generate_content(prompt)
-    return {"odpowiedz": response.text.strip()}
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
     img = PIL.Image.open(io.BytesIO(contents))
@@ -94,7 +85,16 @@ async def analyze(file: UploadFile = File(...)):
     except Exception as e:
         return {"error": str(e)}
 
-if __name__ == "__main__":
-    import uvicorn
-    port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(app, host="0.0.0.0", port=port)
+# Rozmowa z asystentem głosowym (Nowość!)
+@app.post("/ask")
+async def ask_ai(data: dict):
+    pytanie = data.get("pytanie", "")
+    rana = data.get("rana", "nieznana")
+    
+    prompt = f"Użytkownik ma problem: {rana}. Pyta: {pytanie}. Odpowiedz krótko co ma zrobić."
+    
+    try:
+        # Więcej tokenów (150), żeby AI mogło ułożyć kilka pełnych zdań
+        response = voice_model.generate_content(
+            prompt,
+            generation_config=GenerationConfig(temperature=0.2, max_
