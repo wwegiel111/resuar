@@ -23,7 +23,7 @@ app.add_middleware(
 def setup_vertex_ai():
     creds_json = os.getenv("GOOGLE_CREDS_JSON")
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar") 
-    location = "us-central1"
+    location = "us-east1"
 
     if creds_json:
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as f:
@@ -39,17 +39,13 @@ def setup_vertex_ai():
 setup_vertex_ai()
 
 # --- KONFIGURACJA MODELI AI ---
-# Model 1: Do analizy zdjęć
 system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
-model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+model = GenerativeModel("gemini-1.5-flash", system_instruction=system_instruction)
 
-# Model 2: Do asystenta głosowego (TUTAJ BYŁ BŁĄD SKŁADNIOWY W TWOIM KODZIE)
 voice_instruction = "Jesteś asystentem pierwszej pomocy głosowej. Twoje instrukcje muszą być krótkie (max 2 zdania), spokojne i bardzo konkretne. Użytkownik jest w stresie. Odpowiadaj tak, aby można było cię łatwo zrozumieć ze słuchu."
 voice_model = GenerativeModel("gemini-1.5-flash", system_instruction=voice_instruction)
 
-# --- ENDPOINTY (PUNKTY DOSTĘPU) ---
-
-# Strona główna (Frontend)
+# --- ENDPOINTY ---
 @app.get("/", response_class=HTMLResponse)
 def home():
     try:
@@ -58,7 +54,6 @@ def home():
     except FileNotFoundError:
         return "BŁĄD: Nie znaleziono pliku index.html na GitHubie."
 
-# Analiza zdjęcia
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
@@ -78,14 +73,13 @@ async def analyze(file: UploadFile = File(...)):
     try:
         response = model.generate_content(
             [image_part, "Skategoryzuj tę ranę."],
-            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
+            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=100),
             safety_settings=safety_settings
         )
         return {"diagnosis": response.text.strip()}
     except Exception as e:
         return {"error": str(e)}
 
-# Rozmowa z asystentem głosowym (Nowość!)
 @app.post("/ask")
 async def ask_ai(data: dict):
     pytanie = data.get("pytanie", "")
@@ -94,7 +88,16 @@ async def ask_ai(data: dict):
     prompt = f"Użytkownik ma problem: {rana}. Pyta: {pytanie}. Odpowiedz krótko co ma zrobić."
     
     try:
-        # Więcej tokenów (150), żeby AI mogło ułożyć kilka pełnych zdań
+        # Tutaj jest to miejsce, gdzie wcześniej ucięło Ci nawias!
         response = voice_model.generate_content(
             prompt,
-            generation_config=GenerationConfig(temperature=0.2, max_
+            generation_config=GenerationConfig(temperature=0.2, max_output_tokens=150)
+        )
+        return {"odpowiedz": response.text.strip()}
+    except Exception as e:
+        return {"odpowiedz": "Wystąpił błąd połączenia. Proszę, powtórz pytanie."}
+
+if __name__ == "__main__":
+    import uvicorn
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
