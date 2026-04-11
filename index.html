@@ -283,11 +283,17 @@
         </button>
 
         <div id="resultPanel" class="result-panel"></div>
+        <button onclick="zacznijSluchac()" style="background-color: #ea4335; margin-top: 10px;">
+    NACIŚNIJ I ZADAJ PYTANIE
+</button>
     </div>
 </div>
 
 <script>
     let selectedFile = null;
+    let rozpoznanaRana = ""; // Przechowuje wynik diagnozy dla kontekstu rozmowy
+
+    // Elementy UI
     const cameraInput = document.getElementById('cameraInput');
     const galleryInput = document.getElementById('galleryInput');
     const imagePreview = document.getElementById('imagePreview');
@@ -296,6 +302,60 @@
     const analyzeBtn = document.getElementById('analyzeBtn');
     const resultPanel = document.getElementById('resultPanel');
     const loaderOverlay = document.getElementById('loaderOverlay');
+
+    // --- NOWE FUNKCJE GŁOSOWE ---
+
+    // 1. Funkcja mówienia (AI mówi do użytkownika)
+    function powiedz(tekst) {
+        // Przerywamy poprzednie wypowiedzi, żeby się nie nakładały
+        window.speechSynthesis.cancel();
+        const msg = new SpeechSynthesisUtterance(tekst);
+        msg.lang = 'pl-PL';
+        msg.rate = 0.9; // Spokojne tempo
+        window.speechSynthesis.speak(msg);
+    }
+
+    // 2. Funkcja słuchania (Użytkownik zadaje pytanie)
+    function zacznijSluchac() {
+        const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!Recognition) {
+            alert("Twoja przeglądarka nie obsługuje rozpoznawania mowy.");
+            return;
+        }
+
+        const rec = new Recognition();
+        rec.lang = 'pl-PL';
+        rec.continuous = false;
+        rec.interimResults = false;
+
+        resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #ef4444; margin-right: 8px;"></i> Słucham...`;
+
+        rec.onresult = async (event) => {
+            const pytanie = event.results[0][0].transcript;
+            resultPanel.innerHTML = `<i class="fas fa-user" style="color: #3b82f6; margin-right: 8px;"></i> Ty: ${pytanie}`;
+            
+            try {
+                // Wysyłamy pytanie głosowe do nowego endpointu na serwerze
+                const res = await fetch('/ask', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ pytanie: pytanie, rana: rozpoznanaRana })
+                });
+                const data = await res.json();
+                
+                if (data.odpowiedz) {
+                    resultPanel.innerHTML = `<i class="fas fa-robot" style="color: #10b981; margin-right: 8px;"></i> ${data.odpowiedz}`;
+                    powiedz(data.odpowiedz);
+                }
+            } catch (err) {
+                console.error("Błąd komunikacji głosowej:", err);
+            }
+        };
+
+        rec.start();
+    }
+
+    // --- RESZTA TWOJEGO KODU ---
 
     function playClick() {
         if (navigator.vibrate) {
@@ -307,8 +367,6 @@
         const file = event.target.files[0];
         if (file) {
             selectedFile = file;
-            
-            // Show preview
             const reader = new FileReader();
             reader.onload = function(e) {
                 imagePreview.src = e.target.result;
@@ -316,8 +374,6 @@
                 previewPlaceholder.style.display = 'none';
                 previewContainer.classList.add('has-image');
                 analyzeBtn.disabled = false;
-                
-                // Hide previous result
                 resultPanel.style.display = 'none';
             }
             reader.readAsDataURL(file);
@@ -328,15 +384,12 @@
     galleryInput.addEventListener('change', handleFileSelect);
 
     async function analyze() {
-        if (!selectedFile) {
-            return;
-        }
+        if (!selectedFile) return;
 
         playClick();
         const formData = new FormData();
         formData.append('file', selectedFile);
 
-        // UI Reset Before Request
         resultPanel.style.display = 'none';
         resultPanel.className = 'result-panel';
         loaderOverlay.style.display = 'flex';
@@ -354,8 +407,28 @@
             
             resultPanel.style.display = 'block';
             if (response.ok && data.diagnosis) {
+                rozpoznanaRana = data.diagnosis; // Zapisujemy diagnozę
                 resultPanel.classList.add('success');
                 resultPanel.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i> ${data.diagnosis}`;
+                
+                // --- LOGIKA ASYSTENTA AED ---
+                let instrukcja = "";
+                if (rozpoznanaRana.toLowerCase().includes("poparzenie")) {
+                    instrukcja = "Rozpoznałem oparzenie. Schładzaj miejsce letnią, bieżącą wodą przez minimum dziesięć minut. Nie nakładaj lodu ani tłuszczu. Masz dostęp do wody?";
+                } else if (rozpoznanaRana.toLowerCase().includes("rozcięcie")) {
+                    instrukcja = "Widzę rozcięcie. Uciśnij ranę czystą gazą lub materiałem, aby zatamować krwawienie. Czy krwawienie jest bardzo silne?";
+                } else {
+                    instrukcja = `Zdiagnozowano: ${rozpoznanaRana}. Postępuj zgodnie ze standardową procedurą pierwszej pomocy.`;
+                }
+
+                // AI odczytuje pierwszą instrukcję
+                powiedz(instrukcja);
+                
+                // Dodajemy przycisk mikrofonu do panelu wyników, żeby użytkownik mógł odpowiedzieć
+                resultPanel.innerHTML += `<br><button onclick="zacznijSluchac()" style="margin-top: 15px; background: #ef4444; color: white; border: none; padding: 10px; border-radius: 8px; width: 100%;">
+                    <i class="fas fa-microphone"></i> ODPOWIEDZ / ZADAJ PYTANIE
+                </button>`;
+
             } else {
                 resultPanel.classList.add('error');
                 resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i> ${data.error || "Nieznany błąd"}`;
