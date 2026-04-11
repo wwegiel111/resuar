@@ -54,6 +54,21 @@ def home():
         return "BŁĄD: Nie znaleziono pliku index.html na GitHubie."
 
 @app.post("/analyze")
+voice_model = GenerativeModel(
+    "gemini-2.5-flash",
+    system_instruction="Jesteś asystentem pierwszej pomocy głosowej. Twoje instrukcje muszą być krótkie (max 2 zdania), spokojne i bardzo konkretne. Użytkownik jest w stresie. Odpowiadaj tak, aby można było cię łatwo zrozumieć ze słuchu."
+)
+
+@app.post("/ask")
+async def ask_ai(data: dict):
+    # data zawiera tekst pytania od użytkownika i kontekst (rodzaj rany)
+    pytanie = data.get("pytanie")
+    rana = data.get("rana")
+    
+    prompt = f"Użytkownik ma problem: {rana}. Pyta: {pytanie}. Odpowiedz krótko co ma zrobić."
+    
+    response = voice_model.generate_content(prompt)
+    return {"odpowiedz": response.text.strip()}
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
     img = PIL.Image.open(io.BytesIO(contents))
@@ -72,7 +87,7 @@ async def analyze(file: UploadFile = File(...)):
     try:
         response = model.generate_content(
             [image_part, "Skategoryzuj tę ranę."],
-            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=100),
+            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
             safety_settings=safety_settings
         )
         return {"diagnosis": response.text.strip()}
