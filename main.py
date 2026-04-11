@@ -1,7 +1,8 @@
 import os
 import json
 import tempfile
-from fastapi import FastAPI, UploadFile, File
+from fastapi import FastAPI, UploadFile, File, Response
+from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig, HarmCategory, HarmBlockThreshold
@@ -10,6 +11,7 @@ import io
 
 app = FastAPI()
 
+# 1. CORS na wszelki wypadek (zostawiamy '*')
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -17,15 +19,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- LOGIKA AUTORYZACJI BEZ PLIKU NA DYSKU ---
+# --- LOGIKA AUTORYZACJI ---
 def setup_vertex_ai():
-    # Pobieramy treść JSON-a ze zmiennej środowiskowej
     creds_json = os.getenv("GOOGLE_CREDS_JSON")
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar") # Twoje ID projektu
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar") 
     location = "us-central1"
 
     if creds_json:
-        # Tworzymy tymczasowy plik, którego wymaga biblioteka Google
         with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as f:
             f.write(creds_json)
             temp_path = f.name
@@ -42,12 +42,22 @@ setup_vertex_ai()
 system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
 model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
 
+# --- 2. NOWOŚĆ: WYŚWIETLANIE STRONY GŁÓWNEJ ---
+@app.get("/", response_class=HTMLResponse)
+def home():
+    # Pobieramy treść pliku index.html z dysku serwera
+    try:
+        with open("index.html", "r", encoding="utf-8") as f:
+            html_content = f.read()
+        return html_content
+    except FileNotFoundError:
+        return "BŁĄD: Nie znaleziono pliku index.html na GitHubie."
+
 @app.post("/analyze")
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
     img = PIL.Image.open(io.BytesIO(contents))
     
-    # Konwersja PIL na bajty dla Vertex AI
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='JPEG')
     image_part = Part.from_data(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
