@@ -73,33 +73,7 @@ async def analyze(file: UploadFile = File(...)):
             generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
             safety_settings=safety_settings
         )
-
-        diagnosis_text = response.text.strip()
-        diagnosis_lower = diagnosis_text.lower()
-
-        steps = []
-        if "rozcięcie" in diagnosis_lower:
-            steps = [
-                "Wash your hands with soap or antibacterial cleanser to prevent infection.",
-                "Then, wash the cut thoroughly with mild soap and water.",
-                "Use direct pressure to stop the bleeding.",
-                "Apply antibacterial ointment and a clean bandage that will not stick to the wound."
-            ]
-        elif "poparzenie" in diagnosis_lower:
-            steps = [
-                "Run cool water over the area of the burn or soak it in a cool water bath (not ice water). Keep the area under water for at least 5 to 30 minutes. A clean, cold, wet towel will help reduce pain.",
-                "Calm and reassure the person.",
-                "After flushing or soaking the burn, cover it with a dry, sterile bandage or clean dressing.",
-                "Protect the burn from pressure and friction.",
-                "Over-the-counter ibuprofen or acetaminophen can help relieve pain and swelling.",
-                "Do not give aspirin to children under 12.",
-                "Once the skin has cooled, moisturizing lotion containing aloe and an antibiotic also can help."
-            ]
-        else:
-            steps = ["Brak szczegółowych instrukcji dla tego typu obrażenia."]
-
-        return {"diagnosis": diagnosis_text, "steps": steps}
-
+        return {"diagnosis": response.text.strip()}
     except Exception as e:
         return {"error": str(e)}
 

@@ -230,7 +230,6 @@
 
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.4; } 100% { opacity: 1; } }
 
         input[type="file"] { display: none; }
     </style>
@@ -283,90 +282,6 @@
 
 <script>
     let selectedFile = null;
-
-    let currentSteps = [];
-    let currentStepIndex = 0;
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    let recognition = null;
-
-    if (SpeechRecognition) {
-        recognition = new SpeechRecognition();
-        recognition.lang = 'pl-PL';
-        recognition.continuous = true;
-        recognition.interimResults = false;
-
-        recognition.onresult = function(event) {
-            const last = event.results.length - 1;
-            const command = event.results[last][0].transcript.trim().toLowerCase();
-            console.log("Rozpoznano komendę:", command);
-
-            if (command.includes("kontynuuj") || command.includes("dalej") || command.includes("jeden")) {
-                nextStep();
-            } else if (command.includes("powtórz") || command.includes("jeszcze raz") || command.includes("dwa")) {
-                repeatStep();
-            } else if (command.includes("doprecyzuj") || command.includes("szczegóły") || command.includes("trzy")) {
-                clarifyStep();
-            }
-        };
-
-        recognition.onerror = function(event) {
-            console.log("Błąd rozpoznawania:", event.error);
-        };
-
-        recognition.onend = function() {
-            if (currentStepIndex < currentSteps.length) {
-                try { recognition.start(); } catch(e) {}
-            }
-        }
-    }
-
-    function startListening() {
-        if (recognition) {
-            try { recognition.start(); console.log("Rozpoczęto nasłuchiwanie..."); } catch (e) {}
-        }
-    }
-
-    function stopListening() {
-        if (recognition) { recognition.stop(); }
-    }
-
-    function renderStep() {
-        const stepContainer = document.getElementById('stepContainer');
-        if (!stepContainer) return;
-
-        if (currentStepIndex < currentSteps.length) {
-            stepContainer.innerHTML = `
-                <div style="margin-top: 15px; text-align: left; background: rgba(0,0,0,0.25); padding: 15px; border-radius: 12px; border-left: 4px solid #60a5fa;">
-                    <strong style="color: #60a5fa; font-size: 0.9rem;">KROK ${currentStepIndex + 1} Z ${currentSteps.length}</strong>
-                    <p style="margin: 10px 0; font-size: 1.05rem; font-weight: 400; line-height: 1.4;">${currentSteps[currentStepIndex]}</p>
-
-                    <div style="margin-top: 15px; font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px;">Dostępne komendy:</div>
-                    <div style="display: flex; flex-direction: column; gap: 8px; margin-top: 10px;">
-                        <button onclick="nextStep()" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 8px; cursor: pointer; text-align: left; font-family: 'Outfit'; font-size: 0.95rem; transition: background 0.2s;"><i class="fas fa-arrow-right" style="color: #60a5fa; width: 24px;"></i> 1. Kontynuuj</button>
-                        <button onclick="repeatStep()" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 8px; cursor: pointer; text-align: left; font-family: 'Outfit'; font-size: 0.95rem; transition: background 0.2s;"><i class="fas fa-redo" style="color: #10b981; width: 24px;"></i> 2. Powtórz jeszcze raz</button>
-                        <button onclick="clarifyStep()" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; border-radius: 8px; cursor: pointer; text-align: left; font-family: 'Outfit'; font-size: 0.95rem; transition: background 0.2s;"><i class="fas fa-question-circle" style="color: #f59e0b; width: 24px;"></i> 3. Doprecyzuj...</button>
-                    </div>
-                    <div style="margin-top: 15px; color: #10b981; font-size: 0.85rem; display: flex; align-items: center; gap: 8px;">
-                        <i class="fas fa-microphone" style="animation: pulse 1.5s infinite;"></i> Możesz też wydać komendę głosowo...
-                    </div>
-                </div>
-            `;
-            startListening();
-        } else {
-            stepContainer.innerHTML = `
-                <div style="margin-top: 20px; text-align: center; color: var(--text-light); padding: 15px; background: rgba(16, 185, 129, 0.1); border-radius: 12px; border: 1px solid rgba(16, 185, 129, 0.2);">
-                    <i class="fas fa-check-circle" style="font-size: 2rem; color: #10b981; margin-bottom: 10px; display: block;"></i>
-                    Wszystkie kroki pierwszej pomocy zostały ukończone!
-                </div>
-            `;
-            stopListening();
-        }
-    }
-
-    function nextStep() { playClick(); currentStepIndex++; renderStep(); }
-    function repeatStep() { playClick(); renderStep(); }
-    function clarifyStep() { playClick(); alert("Funkcja 'Doprecyzuj' zostanie wkrótce dodana."); }
 
     // Elementy UI
     const cameraInput = document.getElementById('cameraInput');
@@ -429,19 +344,7 @@
             resultPanel.style.display = 'block';
             if (response.ok && data.diagnosis) {
                 resultPanel.classList.add('success');
-
-                currentSteps = data.steps || [];
-                currentStepIndex = 0;
-
-                resultPanel.innerHTML = `
-                    <div style="font-size: 1.2rem; margin-bottom: 10px;">
-                        <i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i>
-                        <span style="text-transform: capitalize;">${data.diagnosis}</span>
-                    </div>
-                    <div id="stepContainer"></div>
-                `;
-
-                renderStep();
+                resultPanel.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i> ${data.diagnosis}`;
             } else {
                 resultPanel.classList.add('error');
                 resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i> ${data.error || "Nieznany błąd"}`;
