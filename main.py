@@ -67,7 +67,7 @@ scenario_dict = {
     ]
 }
 
-system_instruction_model_more_info = "Jesteś ekspertem medycznym AI. Na podstawie historii rozmowy asystenta AI z użytkownikiem rozwiń dany krok scenariusza, podając więcej szczegółów i wskazówek. Odpowiedz w formie krótkiego akapitu. Treść rozmowy to"
+system_instruction_model_more_info = "You are an AI emergency medical expert. Analyze the conversation history and clarify the user's query regarding the current first-aid step. Provide a calm, actionable response limited to a maximum of 3 short sentences."
 modelMoreInfo = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction_model_more_info)
 
 class AudioRequest(BaseModel):
