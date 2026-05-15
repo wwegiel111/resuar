@@ -1,21 +1,18 @@
 import os
-import json
+import re
+import io
 import tempfile
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 import vertexai
 from vertexai.generative_models import GenerativeModel, Part, GenerationConfig, HarmCategory, HarmBlockThreshold, Content
 import PIL.Image
-import io
 from pydantic import BaseModel
-from fastapi.responses import StreamingResponse
 from elevenlabs.client import ElevenLabs
 from typing import List, Dict
-import re
-from fastapi.responses import FileResponse
 
-import shutil
 
 app = FastAPI()
 
@@ -46,9 +43,11 @@ def setup_vertex_ai():
 setup_vertex_ai()
 elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
 
-# Konfiguracja modelu
+# Konfiguracja modelu rozpoznawania obrazen
 system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
 model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+
+#scenariusze
 scenario_dict = {
     "Poparzenie": [
         'Run cool water over the area of the burn or soak it in a cool water bath (not ice water). Keep the area under water for at least 5 to 30 minutes. A clean, cold, wet towel will help reduce pain.',
@@ -67,6 +66,7 @@ scenario_dict = {
     ]
 }
 
+#model rozwiniecia rozmowy
 system_instruction_model_more_info = "You are an AI emergency medical expert. Analyze the conversation history and clarify the user's query regarding the current first-aid step. Provide a calm, actionable response limited to a maximum of 3 short sentences."
 modelMoreInfo = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction_model_more_info)
 
@@ -140,7 +140,6 @@ async def more(request: ChatRequest):
             )
             print(f"[LOG] Załadowano do pamięci AI -> Kto: {role} | Tekst: {text_part[:50]}...")
 
-        # TUTAJ UŻYWAMY NOWEGO MODELU: chat_model
         print("[LOG] Inicjalizowanie czatu w chat_model...")
         chat = modelMoreInfo.start_chat(history=formatted_history)
         
@@ -184,29 +183,23 @@ async def get_audio(prompt: str):
     filename = get_safe_filename(prompt_text)
     file_path = os.path.join(RECORDINGS_DIR, filename)
 
-    # 1. Jeśli plik już istnieje, FileResponse obsłuży Ranges idealnie
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         print(f"[CACHE] Wysyłam gotowy plik: {filename}")
         return FileResponse(file_path, media_type="audio/mpeg")
 
     print(f"[API] Generuję nowy plik dla Apple: {filename}")
     try:
-        # Generujemy CAŁY plik (bez stream)
         audio_data_iterator = elevenlabs_client.text_to_speech.stream(
             text=prompt_text,
             voice_id="JBFqnCBsd6RMkjVDRZzb",
             model_id="eleven_multilingual_v2"
         )
         
-
-        # Zapisujemy do pliku tymczasowego, żeby Safari nie próbowało 
-        # czytać go, zanim skończymy pisać (to właśnie powoduje 416!)
         temp_file_path = file_path + ".tmp"
         with open(temp_file_path, "wb") as f:
             for chunk in audio_data_iterator:
                 f.write(chunk)
         
-        # Dopiero po pełnym zapisie zmieniamy nazwę na docelową
         os.rename(temp_file_path, file_path)
 
         print(f"[SUCCESS] Plik gotowy i zapisany: {file_path}")

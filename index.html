@@ -413,6 +413,8 @@ function addChatBubble(text, sender) {
                 resultPanel.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i> ${data.diagnosis}`;
                 scenarioArray = data.scenario_array;
                 console.log("Otrzymane scenario_array:", scenarioArray);
+                const welcomeSound = `I recognized a ${data.diagnosis === "Rozcięcie" ? "cut" : "burn"}. I will guide you through the first aid steps. When you finish a step, say "Next". If you have a question, say "More". To hear the step again, say "Repeat". Let's begin.`;
+                scenarioArray.unshift(welcomeSound);
                 readScenarioStepByStep();
             } else {
                 resultPanel.classList.add('error');
@@ -469,14 +471,13 @@ function addChatBubble(text, sender) {
     console.log("Odczytywany krok:", currentStepText);
     addChatBubble(currentStepText, "ai");
 
-    // Wywołujemy pobranie dźwięku
+    //pobranie dźwięku
     await getAudio(currentStepText);
 }
 
 async function askGeminiQuestion(userQuestion) {
     try {
-        // 1. Zanim zapiszemy pytanie, sprawdzamy czy to początek konwersacji. 
-        // Jeśli tak, doklejamy niewidzialny kontekst kroku do pytania użytkownika.
+        //niewidzialny kontekst kroku do pytania użytkownika.
         let questionForAI = userQuestion;
         
         if (messageHistory.length === 0) {
@@ -484,13 +485,12 @@ async function askGeminiQuestion(userQuestion) {
              questionForAI = `Kontekst kroku: ${currentStep}. Moje pytanie to: ${userQuestion}`;
         }
 
-        // 2. TERAZ UŻYWAMY userQuestion! Dodajemy zapytanie do historii
+        //dodajemy zapytanie do historii
         messageHistory.push({
             role: "user",
             parts: [questionForAI]
         });
 
-        // 3. Wysyłamy całą historię na serwer
         const response = await fetch('/more', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -502,13 +502,13 @@ async function askGeminiQuestion(userQuestion) {
         const data = await response.json();
         const answer = data.text || "Błąd odpowiedzi AI.";
 
-        // 4. Zapisujemy odpowiedź modelu do historii, żeby pamiętał co powiedział
+        //zapisujemy odpowiedź modelu do historii, żeby pamiętał co powiedział
         messageHistory.push({
             role: "model",
             parts: [answer]
         });
 
-        // 5. Wyświetlamy dymek i odtwarzamy dźwięk
+        //dymek i dźwięk
         addChatBubble(answer, "ai");
         await getAudio(answer);
 
@@ -520,9 +520,7 @@ async function askGeminiQuestion(userQuestion) {
     }
 }
     async function getAudio(promptText) {
-    try {
-        // Wysyłamy zapytanie POST do naszego backendu w FastAPI
-      
+    try {      
         const audioUrl = `get_audio?prompt=${encodeURIComponent(promptText)}`;
 
         const audio = new Audio(audioUrl);
@@ -532,10 +530,6 @@ async function askGeminiQuestion(userQuestion) {
             console.log("Zakończono odtwarzanie kroku.");
             
             startLocalVoiceCommand();
-            
-            // LUB jeśli chcesz to testować bez mikrofonu, możesz po prostu odkomentować poniższe:
-            // currentScenarioIndex++;
-            // readScenarioStepByStep(); 
         };
 
         // Odtwarzamy dźwięk
@@ -564,9 +558,9 @@ async function askGeminiQuestion(userQuestion) {
     // Zmieniamy komunikat w zależności od trybu
     recognition.onstart = () => {
         if (isChatMode) {
-            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #3b82f6; animation: pulse 1s infinite;"></i> Tryb Q&A (Zadaj pytanie lub powiedz "next")...`;
+            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #3b82f6; animation: pulse 1s infinite;"></i> Q&A mode (Ask a question or say "next")...`;
         } else {
-            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #ef4444; animation: pulse 1s infinite;"></i> Nasłuchuję (powiedz: "next", "repeat" lub "more")...`;
+            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #ef4444; animation: pulse 1s infinite;"></i> I'm listening (say: "next", "repeat" or "more")...`;
         }
     };
 
@@ -582,9 +576,7 @@ async function askGeminiQuestion(userQuestion) {
         resultPanel.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Przetwarzam...`;
         addChatBubble(transcript, "user"); 
 
-        // ==========================================
-        // MASZYNA STANÓW - TRYB ZADAWANIA PYTAŃ
-        // ==========================================
+        //Q&A mode
         if (isChatMode) {
             if (transcript.includes("next")) {
                 // Użytkownik chce wyjść z pytań i przejść dalej
@@ -593,15 +585,13 @@ async function askGeminiQuestion(userQuestion) {
                 currentScenarioIndex++;
                 readScenarioStepByStep(); 
             } else {
-                // Jeśli to nie jest "next", traktujemy to jako zadane pytanie do Gemini!
+                // Jeśli to nie jest "next", traktujemy to jako zadane pytanie do Gemini
                 askGeminiQuestion(transcript);
             }
-            return; // Zakończ tę funkcję
+            return;
         }
 
-        // ==========================================
-        // MASZYNA STANÓW - TRYB STANDARDOWY (SCENARIUSZ)
-        // ==========================================
+        //scenarios
         if (transcript.includes("next")) {
             currentScenarioIndex++;
             readScenarioStepByStep();
@@ -614,7 +604,7 @@ async function askGeminiQuestion(userQuestion) {
             isChatMode = true; 
             const infoText = "Help mode activated. Ask your question, or say next to continue.";
             addChatBubble(infoText, "ai"); 
-            await getAudio(infoText); // To na końcu wywoła nasłuchiwanie, ale już w nowym trybie!
+            await getAudio(infoText);
 
         } else if (transcript.includes("stop")) {
             addChatBubble("Procedure stopped.", "ai"); 
