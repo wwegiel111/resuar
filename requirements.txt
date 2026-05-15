@@ -3,3 +3,4 @@ uvicorn
 google-cloud-aiplatform
 python-multipart
 pillow
+elevenlabs
