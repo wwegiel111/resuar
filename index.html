@@ -232,6 +232,50 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
 
         input[type="file"] { display: none; }
+
+    .chat-container {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        max-height: 350px;
+        overflow-y: auto;
+        margin-top: 20px;
+        padding: 15px;
+        background: #f8fafc;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+    }
+
+    .chat-bubble {
+        max-width: 85%;
+        padding: 10px 14px;
+        border-radius: 16px;
+        font-size: 15px;
+        line-height: 1.4;
+        animation: fadeIn 0.3s ease-out;
+        word-wrap: break-word;
+    }
+
+    /* Dymek Asystenta (Lewa strona, niebieski) */
+    .chat-bubble.ai {
+        align-self: flex-start;
+        background-color: #e0f2fe;
+        color: #0369a1;
+        border-bottom-left-radius: 4px;
+    }
+
+    /* Dymek Użytkownika (Prawa strona, zielony) */
+    .chat-bubble.user {
+        align-self: flex-end;
+        background-color: #10b981;
+        color: white;
+        border-bottom-right-radius: 4px;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
+    }
     </style>
 </head>
 <body>
@@ -278,6 +322,8 @@
 
         <div id="resultPanel" class="result-panel"></div>
     </div>
+
+    <div id="chatContainer" class="chat-container" style="display: none;"></div>
 </div>
 
 <script>
@@ -292,6 +338,14 @@
     const analyzeBtn = document.getElementById('analyzeBtn');
     const resultPanel = document.getElementById('resultPanel');
     const loaderOverlay = document.getElementById('loaderOverlay');
+    let scenarioArray = [];
+    let currentScenarioIndex = 0;
+    let recognitionText = null;
+    let audioContext = null;
+    let mediaRecorder = null;
+    let audioChunks = [];
+    const messageHistory = [];
+    let isChatMode = false;
 
     function playClick() {
         if (navigator.vibrate) {
@@ -319,6 +373,18 @@
     cameraInput.addEventListener('change', handleFileSelect);
     galleryInput.addEventListener('change', handleFileSelect);
 
+function addChatBubble(text, sender) {
+    const chatContainer = document.getElementById('chatContainer');
+    if (chatContainer.style.display === 'none') chatContainer.style.display = 'flex';
+
+    const bubble = document.createElement('div');
+    bubble.classList.add('chat-bubble', sender);
+    const icon = sender === 'ai' ? '<i class="fas fa-robot"></i> ' : '<i class="fas fa-user"></i> ';
+    bubble.innerHTML = icon + text;
+    chatContainer.appendChild(bubble);
+    chatContainer.scrollTop = chatContainer.scrollHeight;
+}
+
     async function analyze() {
         if (!selectedFile) return;
 
@@ -342,9 +408,12 @@
             analyzeBtn.disabled = false;
             
             resultPanel.style.display = 'block';
-            if (response.ok && data.diagnosis) {
+            if (response.ok && data.diagnosis && data.scenario_array && Array.isArray(data.scenario_array) && data.scenario_array.length > 0) {
                 resultPanel.classList.add('success');
                 resultPanel.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i> ${data.diagnosis}`;
+                scenarioArray = data.scenario_array;
+                console.log("Otrzymane scenario_array:", scenarioArray);
+                readScenarioStepByStep();
             } else {
                 resultPanel.classList.add('error');
                 resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i> ${data.error || "Nieznany błąd"}`;
@@ -357,6 +426,222 @@
             resultPanel.innerHTML = `<i class="fas fa-wifi" style="color: #ef4444; margin-right: 8px;"></i> Błąd połączenia z serwerem.`;
         }
     }
+
+    async function getMoreInfo() {
+        try {
+            const response = await fetch('/more', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ prompt: messageHistory.map(msg => `${msg.sender === 'ai' ? 'AI' : 'User'}: ${msg.text}`).join('\n') })
+            });
+
+            if (!response.ok) {
+                throw new Error(`Błąd serwera: ${response.status}`);
+            }
+
+            const data = await response.json();
+            const moreInfoText = data.text || "Brak dodatkowych informacji.";
+            addChatBubble(moreInfoText, "ai");
+            await getAudio(moreInfoText);
+
+        } catch (error) {
+            console.error("Błąd podczas pobierania dodatkowych informacji:", error);
+            addChatBubble("Nie udało się pobrać dodatkowych informacji.", "ai");
+        }
+    }
+
+    async function readScenarioStepByStep() {
+    if (!scenarioArray || scenarioArray.length === 0) {
+        console.log("Brak scenariuszy do odczytania.");
+        return;
+    }
+
+    if (currentScenarioIndex >= scenarioArray.length) {
+        console.log("Koniec procedury.");
+        currentScenarioIndex = 0;
+        addChatBubble("Procedura ratunkowa zakończona.", "ai");
+        return;
+    }
+
+    const currentStepText = scenarioArray[currentScenarioIndex];
+    console.log("Odczytywany krok:", currentStepText);
+    addChatBubble(currentStepText, "ai");
+
+    // Wywołujemy pobranie dźwięku
+    await getAudio(currentStepText);
+}
+
+async function askGeminiQuestion(userQuestion) {
+    try {
+        // 1. Zanim zapiszemy pytanie, sprawdzamy czy to początek konwersacji. 
+        // Jeśli tak, doklejamy niewidzialny kontekst kroku do pytania użytkownika.
+        let questionForAI = userQuestion;
+        
+        if (messageHistory.length === 0) {
+             const currentStep = scenarioArray[currentScenarioIndex] || "Brak kontekstu";
+             questionForAI = `Kontekst kroku: ${currentStep}. Moje pytanie to: ${userQuestion}`;
+        }
+
+        // 2. TERAZ UŻYWAMY userQuestion! Dodajemy zapytanie do historii
+        messageHistory.push({
+            role: "user",
+            parts: [questionForAI]
+        });
+
+        // 3. Wysyłamy całą historię na serwer
+        const response = await fetch('/more', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ history: messageHistory }) 
+        });
+
+        if (!response.ok) throw new Error("Błąd serwera");
+
+        const data = await response.json();
+        const answer = data.text || "Błąd odpowiedzi AI.";
+
+        // 4. Zapisujemy odpowiedź modelu do historii, żeby pamiętał co powiedział
+        messageHistory.push({
+            role: "model",
+            parts: [answer]
+        });
+
+        // 5. Wyświetlamy dymek i odtwarzamy dźwięk
+        addChatBubble(answer, "ai");
+        await getAudio(answer);
+
+    } catch (error) {
+        console.error("Błąd zapytania:", error);
+        const errText = "Wystąpił błąd komunikacji. Spróbuj zadać pytanie jeszcze raz lub powiedz next.";
+        addChatBubble(errText, "ai");
+        await getAudio(errText);
+    }
+}
+    async function getAudio(promptText) {
+    try {
+        // Wysyłamy zapytanie POST do naszego backendu w FastAPI
+      
+        const audioUrl = `get_audio?prompt=${encodeURIComponent(promptText)}`;
+
+        const audio = new Audio(audioUrl);
+
+        // Co ma się wydarzyć, gdy plik skończy grać?
+        audio.onended = () => {
+            console.log("Zakończono odtwarzanie kroku.");
+            
+            startLocalVoiceCommand();
+            
+            // LUB jeśli chcesz to testować bez mikrofonu, możesz po prostu odkomentować poniższe:
+            // currentScenarioIndex++;
+            // readScenarioStepByStep(); 
+        };
+
+        // Odtwarzamy dźwięk
+        audio.play();
+
+    } catch (error) {
+        console.error("Błąd podczas generowania audio:", error);
+    }
+
+
+    function startLocalVoiceCommand() {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+        resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Twoja przeglądarka nie obsługuje funkcji rozpoznawania mowy.`;
+        return;
+    }
+
+    const recognition = new SpeechRecognition();
+    recognition.lang = 'en-US'; 
+    recognition.continuous = false; 
+    recognition.interimResults = false; 
+
+    let commandAnalyze = false; 
+
+    // Zmieniamy komunikat w zależności od trybu
+    recognition.onstart = () => {
+        if (isChatMode) {
+            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #3b82f6; animation: pulse 1s infinite;"></i> Tryb Q&A (Zadaj pytanie lub powiedz "next")...`;
+        } else {
+            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #ef4444; animation: pulse 1s infinite;"></i> Nasłuchuję (powiedz: "next", "repeat" lub "more")...`;
+        }
+    };
+
+    recognition.onresult = async (event) => {
+        if (commandAnalyze) return; 
+        commandAnalyze = true; 
+        recognition.stop(); 
+
+        let transcript = event.results[0][0].transcript.toLowerCase();
+        transcript = transcript.replace(/[.,!?]/g, '').trim();
+
+        console.log("Przeglądarka usłyszała:", transcript);
+        resultPanel.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Przetwarzam...`;
+        addChatBubble(transcript, "user"); 
+
+        // ==========================================
+        // MASZYNA STANÓW - TRYB ZADAWANIA PYTAŃ
+        // ==========================================
+        if (isChatMode) {
+            if (transcript.includes("next")) {
+                // Użytkownik chce wyjść z pytań i przejść dalej
+                isChatMode = false; 
+                addChatBubble("Zamykam tryb pomocy.", "ai");
+                currentScenarioIndex++;
+                readScenarioStepByStep(); 
+            } else {
+                // Jeśli to nie jest "next", traktujemy to jako zadane pytanie do Gemini!
+                askGeminiQuestion(transcript);
+            }
+            return; // Zakończ tę funkcję
+        }
+
+        // ==========================================
+        // MASZYNA STANÓW - TRYB STANDARDOWY (SCENARIUSZ)
+        // ==========================================
+        if (transcript.includes("next")) {
+            currentScenarioIndex++;
+            readScenarioStepByStep();
+
+        } else if (transcript.includes("repeat")) {
+            readScenarioStepByStep(); 
+
+        } else if (transcript.includes("more")) {
+            // Włączamy tryb czatu
+            isChatMode = true; 
+            const infoText = "Help mode activated. Ask your question, or say next to continue.";
+            addChatBubble(infoText, "ai"); 
+            await getAudio(infoText); // To na końcu wywoła nasłuchiwanie, ale już w nowym trybie!
+
+        } else if (transcript.includes("stop")) {
+            addChatBubble("Procedure stopped.", "ai"); 
+            currentScenarioIndex = scenarioArray.length;
+
+        } else {
+            const fallbackText = "I didn't understand. Please say next, repeat, or more.";
+            addChatBubble(fallbackText, "ai"); 
+            await getAudio(fallbackText);
+        }
+    };
+
+    recognition.onerror = async (event) => {
+        if (event.error === 'aborted') return;
+
+        console.error("Błąd rozpoznawania mowy:", event.error);
+        if (event.error === 'no-speech') {
+            const prompt = isChatMode ? "Waiting for your question, or say next." : "Please say next, repeat, or more.";
+            await getAudio(prompt);
+        } else {
+            resultPanel.innerHTML = `<i class="fas fa-microphone-slash"></i> Błąd mikrofonu: ${event.error}`;
+        }
+    };
+
+    recognition.start();
+}
+}
 </script>
 
 
