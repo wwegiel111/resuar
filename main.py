@@ -422,8 +422,20 @@ if GOOGLE_AVAILABLE:
         "gemini-2.5-flash",
         system_instruction=system_instruction_model_more_info
     )
+
+    # Transcription model — Gemini multimodal STT for iOS voice control
+    transcription_instruction = (
+        "You are a speech-to-text engine. Transcribe the spoken audio. "
+        "Return ONLY the spoken words in lowercase English, no punctuation, no quotes, no explanation. "
+        "If the audio is silent or unclear, return an empty string."
+    )
+    modelTranscribe = GenerativeModel(
+        "gemini-2.5-flash",
+        system_instruction=transcription_instruction
+    )
 else:
     modelMoreInfo = None
+    modelTranscribe = None
 
 
 # ============================================================================

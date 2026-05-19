@@ -186,36 +186,39 @@ function startRecording() {
 
         mediaRecorder.onstop = async () => {
             isRecording = false;
-            const blob = new Blob(recordingChunks, { type: recorderMime || 'audio/webm' });
+            const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || recorderMime || 'audio/mp4' });
             recordingChunks = [];
             speechDetectedAt = 0;
             silenceStartedAt = 0;
 
-            if (blob.size < 1000) {
-                // Too short — likely just noise
+            if (blob.size < 500) {
+                // Too short — likely just noise, resume listening
+                if (state.isVoiceActive) beginListening();
                 return;
             }
 
-            $('transcriptionText').textContent = 'Processing...';
+            $('transcriptionText').textContent = '⏳ Processing...';
             try {
                 const transcript = await transcribeAudio(blob);
                 console.log('[Voice] Transcribed:', transcript);
                 if (!state.isVoiceActive) return;
                 if (!transcript) {
-                    $('transcriptionText').textContent = '🎤 Listening...';
+                    // Empty transcript — resume listening
+                    beginListening();
                     return;
                 }
                 $('transcriptionText').textContent = `You said: "${transcript}"`;
                 handleVoiceCommand(transcript);
             } catch (err) {
                 console.error('[Voice] Transcribe error:', err);
-                $('transcriptionText').textContent = '🎤 Listening...';
+                if (state.isVoiceActive) beginListening();
             }
         };
 
-        mediaRecorder.start();
+        // Use timeslice to ensure ondataavailable fires on iOS Safari
+        mediaRecorder.start(250);
         isRecording = true;
-        $('transcriptionText').textContent = '🎤 Recording...';
+        $('transcriptionText').textContent = '🔴 Recording...';
     } catch (err) {
         console.error('[Voice] startRecording error:', err);
         isRecording = false;
