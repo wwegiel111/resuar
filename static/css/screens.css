@@ -18,7 +18,9 @@ h1 {
 
 @media (min-width: 768px) {
     .grid-cards {
-        grid-template-columns: 1fr 1fr;
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 16px;
     }
 
     .back-btn {

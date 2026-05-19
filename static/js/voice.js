@@ -442,3 +442,9 @@ async function askGeminiQuestion(userQuestion) {
 
 // Expose to global scope
 window.toggleVoiceAssistant = toggleVoiceAssistant;
+window.voiceCommand = function(cmd) {
+    if (!state.isVoiceActive) return;
+    cancelVadLoop();
+    stopRecording(true);
+    handleVoiceCommand(cmd);
+};
