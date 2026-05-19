@@ -4,6 +4,7 @@ import io
 import tempfile
 from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 import PIL.Image
@@ -35,6 +36,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Mount static assets (CSS, JS) at /static
+STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+if os.path.isdir(STATIC_DIR):
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 # --- LOGIKA AUTORYZACJI ---
 def setup_vertex_ai():

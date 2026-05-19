@@ -1,0 +1,78 @@
+/* ==========================================================================
+   Base styles: CSS variables, reset, root layout, global animations
+   ========================================================================== */
+
+:root {
+    /* Light theme */
+    --bg-main: #F4F5F7;
+    --text-dark: #111827;
+    --text-muted: #6B7280;
+    --red-card: #E52E2E;
+    --blue-card: #0A73B6;
+    --blue-hover: #085A8F;
+    --white-card: #FFFFFF;
+    --nav-bg: #FFFFFF;
+    --border-color: #E5E7EB;
+    --hover-bg: #F9FAFB;
+    --active-bg: #EFF6FF;
+    --success-color: #10B981;
+    --warning-color: #F59E0B;
+    --danger-color: #EF4444;
+}
+
+/* Dark theme override */
+body.dark-mode {
+    --bg-main: #111827;
+    --text-dark: #F9FAFB;
+    --text-muted: #9CA3AF;
+    --white-card: #1F2937;
+    --nav-bg: #1F2937;
+    --border-color: #374151;
+    --hover-bg: #374151;
+    --active-bg: #1E3A8A;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: 'Inter', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+body,
+html {
+    background-color: var(--bg-main);
+    color: var(--text-dark);
+    height: 100%;
+    width: 100%;
+    overflow: hidden;
+}
+
+input[type="file"] {
+    display: none;
+}
+
+/* ---- Animations ---- */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes spin {
+    0%   { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+@keyframes heartbeat {
+    0%   { transform: scale(1);    box-shadow: 0 0 20px rgba(239,68,68,0.1); }
+    50%  { transform: scale(1.05); box-shadow: 0 0 50px rgba(239,68,68,0.4); }
+    100% { transform: scale(1);    box-shadow: 0 0 20px rgba(239,68,68,0.1); }
+}
+
+@keyframes breath {
+    0%   { transform: scale(1);   box-shadow: 0 0 20px rgba(10,115,182,0.1); }
+    50%  { transform: scale(1.1); box-shadow: 0 0 50px rgba(10,115,182,0.4); }
+    100% { transform: scale(1);   box-shadow: 0 0 20px rgba(10,115,182,0.1); }
+}
