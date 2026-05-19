@@ -59,7 +59,7 @@ export async function analyze() {
 
         if (data.diagnosis) {
             state.isProcessActive = true;
-            populateDiagnosisScreen(data.diagnosis, data.scenario_array || []);
+            populateDiagnosisScreen(data.diagnosis, data.scenario_array || [], data.severity || 'Moderate');
             switchScreen('diagnosisScreen', null, 2);
         } else {
             showError(data.error || 'Unknown error');
@@ -70,7 +70,7 @@ export async function analyze() {
         btnGallery.style.display = 'flex';
         analyzeBtn.style.display = 'none';
         analyzeBtn.disabled = false;
-        showError('Server connection error.');
+        showError(error.message || 'Server connection error.');
     }
 }
 

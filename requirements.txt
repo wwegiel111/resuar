@@ -1,6 +1,7 @@
-fastapi
-uvicorn
-google-cloud-aiplatform
-python-multipart
-pillow
-elevenlabs
+fastapi==0.115.6
+uvicorn==0.32.1
+google-cloud-aiplatform==1.74.0
+python-multipart==0.0.18
+pillow==11.1.0
+elevenlabs==1.50.5
+slowapi==0.1.9
