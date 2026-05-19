@@ -49,7 +49,7 @@
         body, html {
             background-color: var(--bg-main);
             color: var(--text-dark);
-            height: 100vh;
+            height: 100%;
             width: 100%;
             overflow: hidden;
         }
@@ -59,6 +59,7 @@
             width: 100%;
             max-width: 100%;
             height: 100vh;
+            height: 100dvh;
             margin: 0;
             display: flex;
             flex-direction: column;
@@ -69,18 +70,20 @@
         .screen-wrapper {
             flex: 1;
             position: relative;
-            height: 100%;
             overflow: hidden;
+            /* On mobile, leave room for the fixed bottom nav */
+            padding-bottom: 80px;
         }
 
         .screen {
             display: none;
             flex-direction: column;
-            padding: 24px 24px 90px 24px;
+            padding: 24px 24px 24px 24px;
             width: 100%;
             height: 100%;
             overflow-y: auto;
             animation: fadeIn 0.2s ease-out;
+            -webkit-overflow-scrolling: touch;
         }
         
         .screen.active {
@@ -1037,6 +1040,10 @@
                 flex-direction: row;
             }
 
+            .screen-wrapper {
+                padding-bottom: 0;
+            }
+
             .main-nav {
                 position: static;
                 width: 280px;
@@ -1426,6 +1433,14 @@
 <script>
     let isProcessActive = false; 
 
+    // --- VOICE ASSISTANT STATE ---
+    let scenarioArray = [];
+    let currentScenarioIndex = 0;
+    let isChatMode = false;
+    const messageHistory = [];
+    let currentAudio = null;
+    let currentRecognition = null;
+
     // --- RKO AUDIO (METRONOM I WDECHY) ---
     let audioCtx;
     let beepInterval;
@@ -1701,7 +1716,7 @@
             
             if (response.ok && data.diagnosis) {
                 isProcessActive = true;
-                populateDiagnosisScreen(data.diagnosis);
+                populateDiagnosisScreen(data.diagnosis, data.scenario_array || []);
                 switchScreen('diagnosisScreen', null, 2);
             } else {
                 resultPanel.style.display = 'block';
@@ -1721,13 +1736,26 @@
         }
     }
 
-    function populateDiagnosisScreen(diagnosisText) {
+    function populateDiagnosisScreen(diagnosisText, scenarioArr) {
         document.getElementById('diagImageResult').src = imagePreview.src;
         document.getElementById('diagTitle').textContent = diagnosisText;
         const titleLower = diagnosisText.toLowerCase();
         const stepsList = document.getElementById('stepsList');
         const badge = document.getElementById('diagSeverityBadge');
         const subtitle = document.getElementById('diagSubtitle');
+        
+        // Store scenario array for voice assistant
+        scenarioArray = scenarioArr || [];
+        currentScenarioIndex = 0;
+        isChatMode = false;
+        messageHistory.length = 0;
+        
+        // Prepend welcome message
+        if (scenarioArray.length > 0) {
+            const woundType = (titleLower.includes('poparzenie') || titleLower.includes('burn')) ? 'burn' : 'cut';
+            const welcomeSound = `I recognized a ${woundType}. I will guide you through the first aid steps. When you finish a step, say "Next". If you have a question, say "More". To hear the step again, say "Repeat". Let's begin.`;
+            scenarioArray.unshift(welcomeSound);
+        }
         
         if (titleLower.includes('poparzenie') || titleLower.includes('burn')) {
             badge.className = 'severity-badge moderate';
@@ -1759,20 +1787,239 @@
     function toggleVoiceAssistant() {
         if (isVoiceActive) {
             if (!confirm("Are you sure you want to stop the Voice Assistant?")) return;
+            stopVoiceAssistant();
+            return;
         }
         
-        isVoiceActive = !isVoiceActive;
+        isVoiceActive = true;
         const btnVoice = document.getElementById('btnVoiceAssistant');
         const transcriptionCard = document.getElementById('transcriptionCard');
         
-        if (isVoiceActive) {
-            btnVoice.classList.add('active');
-            btnVoice.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Voice Assistant';
-            transcriptionCard.style.display = 'block';
-        } else {
-            btnVoice.classList.remove('active');
-            btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
-            transcriptionCard.style.display = 'none';
+        btnVoice.classList.add('active');
+        btnVoice.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Voice Assistant';
+        transcriptionCard.style.display = 'block';
+        document.getElementById('transcriptionText').textContent = 'Starting voice assistant...';
+        
+        // Start the voice-guided scenario
+        currentScenarioIndex = 0;
+        isChatMode = false;
+        messageHistory.length = 0;
+        readScenarioStepByStep();
+    }
+
+    function stopVoiceAssistant() {
+        isVoiceActive = false;
+        isChatMode = false;
+        
+        // Stop any playing audio
+        if (currentAudio) {
+            currentAudio.pause();
+            currentAudio = null;
+        }
+        
+        // Stop any active recognition
+        if (currentRecognition) {
+            try { currentRecognition.abort(); } catch(e) {}
+            currentRecognition = null;
+        }
+        
+        const btnVoice = document.getElementById('btnVoiceAssistant');
+        btnVoice.classList.remove('active');
+        btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+        document.getElementById('transcriptionCard').style.display = 'none';
+    }
+
+    // --- VOICE ASSISTANT CORE LOGIC (ported from old frontend) ---
+
+    async function readScenarioStepByStep() {
+        if (!isVoiceActive) return;
+        
+        if (!scenarioArray || scenarioArray.length === 0) {
+            document.getElementById('transcriptionText').textContent = 'No scenario steps available.';
+            return;
+        }
+
+        if (currentScenarioIndex >= scenarioArray.length) {
+            document.getElementById('transcriptionText').textContent = 'First aid procedure completed.';
+            stopVoiceAssistant();
+            return;
+        }
+
+        const currentStepText = scenarioArray[currentScenarioIndex];
+        document.getElementById('transcriptionText').textContent = currentStepText;
+        
+        // Play audio for this step
+        await playStepAudio(currentStepText);
+    }
+
+    async function playStepAudio(promptText) {
+        if (!isVoiceActive) return;
+        
+        try {
+            const audioUrl = `/get_audio?prompt=${encodeURIComponent(promptText)}`;
+            const audio = new Audio(audioUrl);
+            currentAudio = audio;
+
+            audio.onended = () => {
+                currentAudio = null;
+                if (isVoiceActive) {
+                    startLocalVoiceCommand();
+                }
+            };
+
+            audio.onerror = () => {
+                currentAudio = null;
+                // If audio fails (e.g. mock mode), still start listening
+                if (isVoiceActive) {
+                    startLocalVoiceCommand();
+                }
+            };
+
+            await audio.play();
+        } catch (error) {
+            console.error("Audio playback error:", error);
+            // Fallback: start listening even if audio fails
+            if (isVoiceActive) {
+                startLocalVoiceCommand();
+            }
+        }
+    }
+
+    function startLocalVoiceCommand() {
+        if (!isVoiceActive) return;
+        
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        
+        if (!SpeechRecognition) {
+            document.getElementById('transcriptionText').textContent = 'Speech recognition not supported in this browser.';
+            return;
+        }
+
+        const recognition = new SpeechRecognition();
+        recognition.lang = 'en-US';
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        currentRecognition = recognition;
+
+        let commandProcessed = false;
+
+        recognition.onstart = () => {
+            if (!isVoiceActive) { recognition.abort(); return; }
+            if (isChatMode) {
+                document.getElementById('transcriptionText').textContent = '🎤 Q&A mode — Ask a question or say "next"...';
+            } else {
+                document.getElementById('transcriptionText').textContent = '🎤 Listening... (say: "next", "repeat", "more" or "stop")';
+            }
+        };
+
+        recognition.onresult = async (event) => {
+            if (commandProcessed || !isVoiceActive) return;
+            commandProcessed = true;
+            recognition.stop();
+            currentRecognition = null;
+
+            let transcript = event.results[0][0].transcript.toLowerCase();
+            transcript = transcript.replace(/[.,!?]/g, '').trim();
+
+            document.getElementById('transcriptionText').textContent = `You said: "${transcript}"`;
+
+            // Q&A mode handling
+            if (isChatMode) {
+                if (transcript.includes("next")) {
+                    isChatMode = false;
+                    document.getElementById('transcriptionText').textContent = 'Continuing to next step...';
+                    currentScenarioIndex++;
+                    readScenarioStepByStep();
+                } else {
+                    // Treat as a question for Gemini
+                    await askGeminiQuestion(transcript);
+                }
+                return;
+            }
+
+            // Normal scenario mode
+            if (transcript.includes("next")) {
+                currentScenarioIndex++;
+                readScenarioStepByStep();
+            } else if (transcript.includes("repeat")) {
+                readScenarioStepByStep();
+            } else if (transcript.includes("more")) {
+                isChatMode = true;
+                const infoText = "Help mode activated. Ask your question, or say next to continue.";
+                document.getElementById('transcriptionText').textContent = infoText;
+                await playStepAudio(infoText);
+            } else if (transcript.includes("stop")) {
+                document.getElementById('transcriptionText').textContent = 'Procedure stopped.';
+                stopVoiceAssistant();
+            } else {
+                const fallbackText = "I didn't understand. Please say next, repeat, or more.";
+                document.getElementById('transcriptionText').textContent = fallbackText;
+                await playStepAudio(fallbackText);
+            }
+        };
+
+        recognition.onerror = async (event) => {
+            currentRecognition = null;
+            if (event.error === 'aborted' || !isVoiceActive) return;
+
+            if (event.error === 'no-speech') {
+                // Re-prompt
+                const prompt = isChatMode ? "Waiting for your question, or say next." : "Please say next, repeat, or more.";
+                document.getElementById('transcriptionText').textContent = prompt;
+                if (isVoiceActive) await playStepAudio(prompt);
+            } else {
+                document.getElementById('transcriptionText').textContent = `Microphone error: ${event.error}`;
+            }
+        };
+
+        recognition.onend = () => {
+            currentRecognition = null;
+        };
+
+        recognition.start();
+    }
+
+    async function askGeminiQuestion(userQuestion) {
+        if (!isVoiceActive) return;
+        
+        try {
+            document.getElementById('transcriptionText').textContent = 'Thinking...';
+            
+            let questionForAI = userQuestion;
+            if (messageHistory.length === 0) {
+                const currentStep = scenarioArray[currentScenarioIndex] || "No context";
+                questionForAI = `Context of current step: ${currentStep}. My question is: ${userQuestion}`;
+            }
+
+            messageHistory.push({
+                role: "user",
+                parts: [questionForAI]
+            });
+
+            const response = await fetch('/more', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ history: messageHistory })
+            });
+
+            if (!response.ok) throw new Error("Server error");
+
+            const data = await response.json();
+            const answer = data.text || "Sorry, I couldn't get an answer.";
+
+            messageHistory.push({
+                role: "model",
+                parts: [answer]
+            });
+
+            document.getElementById('transcriptionText').textContent = answer;
+            await playStepAudio(answer);
+
+        } catch (error) {
+            console.error("Q&A error:", error);
+            const errText = "Communication error. Try asking again or say next.";
+            document.getElementById('transcriptionText').textContent = errText;
+            if (isVoiceActive) await playStepAudio(errText);
         }
     }
 
@@ -1791,9 +2038,11 @@
     function endProcess() {
         if (confirm("Are you sure you want to close this case and end the process?")) {
             isProcessActive = false;
-            isVoiceActive = false;
-            document.getElementById('btnVoiceAssistant').classList.remove('active');
-            document.getElementById('btnVoiceAssistant').innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+            stopVoiceAssistant();
+            scenarioArray = [];
+            currentScenarioIndex = 0;
+            messageHistory.length = 0;
+            
             imagePreview.style.display = 'none';
             cameraUI.style.display = 'flex';
             btnTakePic.style.display = 'flex';
