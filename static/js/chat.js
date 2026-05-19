@@ -1,37 +1,63 @@
 /**
- * AI Chat screen logic.
+ * AI Chat screen — connected to /more backend endpoint.
  */
 import { $ } from './dom.js';
+import { askMore } from './api.js';
+
+// Persistent chat history for the session (Gemini format)
+const chatHistory = [];
 
 export function handleChatEnter(event) {
     if (event.key === 'Enter') sendChatMessage();
 }
 
-export function sendChatMessage() {
+export async function sendChatMessage() {
     const input = $('chatInput');
     const text = input.value.trim();
     if (!text) return;
 
     const chatMessages = $('chatMessages');
 
-    const userMsg = document.createElement('div');
-    userMsg.className = 'msg user';
-    userMsg.textContent = text;
-    chatMessages.appendChild(userMsg);
-
+    // Show user message
+    appendMessage(chatMessages, text, 'user');
     input.value = '';
-    chatMessages.scrollTop = chatMessages.scrollHeight;
+    input.disabled = true;
 
-    // Placeholder response (backend not yet connected for chat screen)
-    setTimeout(() => {
-        const aiMsg = document.createElement('div');
-        aiMsg.className = 'msg ai';
-        aiMsg.innerHTML =
-            '<i class="fas fa-robot" style="color:var(--blue-card); margin-right:5px;"></i> ' +
-            'This feature is not yet connected to the backend, but the interface is ready!';
-        chatMessages.appendChild(aiMsg);
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-    }, 1000);
+    // Show typing indicator
+    const typingEl = appendMessage(chatMessages, '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;"></i> Thinking...', 'ai');
+
+    // Add to history
+    chatHistory.push({ role: 'user', parts: [text] });
+
+    try {
+        const answer = await askMore(chatHistory);
+
+        // Store AI response in history
+        chatHistory.push({ role: 'model', parts: [answer] });
+
+        // Replace typing indicator with actual response
+        typingEl.innerHTML = answer;
+    } catch (error) {
+        console.error('[Chat] Error:', error);
+        typingEl.innerHTML =
+            '<i class="fas fa-exclamation-triangle" style="color:var(--danger-color); margin-right:6px;"></i> ' +
+            'Could not reach the AI. Please try again.';
+        // Remove failed message from history so user can retry
+        chatHistory.pop();
+    }
+
+    input.disabled = false;
+    input.focus();
+    chatMessages.scrollTop = chatMessages.scrollHeight;
+}
+
+function appendMessage(container, content, sender) {
+    const msg = document.createElement('div');
+    msg.className = `msg ${sender}`;
+    msg.innerHTML = content;
+    container.appendChild(msg);
+    container.scrollTop = container.scrollHeight;
+    return msg;
 }
 
 // Expose to global scope
