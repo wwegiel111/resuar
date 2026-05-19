@@ -406,19 +406,21 @@ h1 {
     display: flex;
     flex-direction: column;
     height: 100%;
-    padding: 0;
+    max-width: 600px;
+    margin: 0 auto;
+    width: 100%;
 }
 
 .vg-progress {
     display: flex;
     gap: 6px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 
 .vg-progress-dot {
-    height: 5px;
+    height: 4px;
     flex: 1;
-    border-radius: 3px;
+    border-radius: 2px;
     background: var(--border-color);
     transition: background 0.3s;
 }
@@ -432,40 +434,47 @@ h1 {
 }
 
 .vg-step-label {
-    font-size: 0.75rem;
+    font-size: 0.7rem;
     font-weight: 700;
     letter-spacing: 1.5px;
     color: var(--text-muted);
     text-transform: uppercase;
-    margin-bottom: 24px;
+    margin-bottom: 20px;
 }
 
 .vg-step-text {
-    font-size: 1.8rem;
+    font-size: 1.6rem;
     font-weight: 700;
-    line-height: 1.3;
+    line-height: 1.35;
     color: var(--text-dark);
-    margin-bottom: 24px;
+    margin-bottom: 16px;
+    padding: 24px;
+    background: var(--white-card);
+    border: 1px solid var(--border-color);
+    border-radius: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .vg-spacer {
     flex: 1;
+    min-height: 20px;
 }
 
 .vg-status {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 16px 20px;
+    padding: 14px 20px;
     background: var(--white-card);
     border: 1px solid var(--border-color);
-    border-radius: 16px;
-    margin-top: auto;
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .vg-status-indicator {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
+    min-width: 10px;
     border-radius: 50%;
     background: var(--success-color);
     animation: pulse-dot 1.5s infinite;
@@ -477,7 +486,8 @@ h1 {
 }
 
 .vg-status p {
-    font-size: 0.9rem;
+    font-size: 0.85rem;
     color: var(--text-muted);
     font-weight: 500;
+    margin: 0;
 }
