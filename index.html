@@ -1,97 +1,401 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RescuAR - Analizator Ran</title>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>RescuAR - AI First Aid</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
         :root {
-            --bg-color: #0f172a;
-            --card-bg: rgba(30, 41, 59, 0.7);
-            --primary: #3b82f6;
-            --primary-hover: #2563eb;
-            --text-light: #f8fafc;
-            --text-muted: #94a3b8;
-            --danger: #ef4444;
-            --success: #10b981;
+            /* Jasny motyw zmienne */
+            --bg-main: #F4F5F7;
+            --text-dark: #111827;
+            --text-muted: #6B7280;
+            --red-card: #E52E2E;
+            --blue-card: #0A73B6;
+            --blue-hover: #085A8F;
+            --white-card: #FFFFFF;
+            --nav-bg: #FFFFFF;
+            --border-color: #E5E7EB;
+            --hover-bg: #F9FAFB;
+            --active-bg: #EFF6FF;
+            --success-color: #10B981;
+            --warning-color: #F59E0B;
+            --danger-color: #EF4444;
         }
 
-        body { 
-            font-family: 'Outfit', sans-serif; 
-            display: flex; 
-            flex-direction: column; 
-            align-items: center; 
-            justify-content: center; 
-            min-height: 100vh; 
-            background: var(--bg-color);
-            background-image: 
-                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
-                radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
-            margin: 0; 
-            color: var(--text-light);
-            overflow-x: hidden;
+        /* Ciemny motyw zmienne */
+        body.dark-mode {
+            --bg-main: #111827;
+            --text-dark: #F9FAFB;
+            --text-muted: #9CA3AF;
+            --white-card: #1F2937;
+            --nav-bg: #1F2937;
+            --border-color: #374151;
+            --hover-bg: #374151;
+            --active-bg: #1E3A8A;
         }
 
-        .container {
-            width: 100%;
-            max-width: 480px;
-            padding: 20px;
+        * {
             box-sizing: border-box;
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 2rem;
-        }
-
-        .header h1 {
-            font-size: 2.5rem;
-            font-weight: 800;
             margin: 0;
-            background: linear-gradient(135deg, #60a5fa, #a78bfa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+            transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
         }
 
-        .header p {
-            color: var(--text-muted);
-            margin-top: 0.5rem;
-            font-weight: 300;
+        body, html {
+            background-color: var(--bg-main);
+            color: var(--text-dark);
+            height: 100vh;
+            width: 100%;
+            overflow: hidden;
         }
 
-        .card { 
-            background: var(--card-bg); 
-            padding: 2rem; 
-            border-radius: 24px; 
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5); 
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-            text-align: center; 
+        /* --- MAIN CONTAINER --- */
+        .app-container {
+            width: 100%;
+            max-width: 100%;
+            height: 100vh;
+            margin: 0;
             display: flex;
             flex-direction: column;
-            gap: 1.5rem;
+            background-color: var(--bg-main);
         }
 
-        .image-preview-container {
+        /* --- SCREENS (Content) --- */
+        .screen-wrapper {
+            flex: 1;
+            position: relative;
+            height: 100%;
+            overflow: hidden;
+        }
+
+        .screen {
+            display: none;
+            flex-direction: column;
+            padding: 24px 24px 90px 24px;
             width: 100%;
-            height: 200px;
-            border: 2px dashed rgba(255, 255, 255, 0.2);
-            border-radius: 16px;
+            height: 100%;
+            overflow-y: auto;
+            animation: fadeIn 0.2s ease-out;
+        }
+        
+        .screen.active {
+            display: flex;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* --- HEADER ELEMENTS --- */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+            padding-top: 10px;
+            position: relative;
+        }
+        
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-weight: 700;
+            font-size: 1.4rem;
+        }
+        
+        .logo-icon {
+            background: linear-gradient(135deg, #0A73B6, #3b82f6);
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            overflow: hidden;
-            position: relative;
-            background: rgba(0,0,0,0.2);
-            transition: all 0.3s ease;
+            font-size: 1rem;
+        }
+        
+        .avatar {
+            background-color: var(--blue-card);
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
         }
 
-        .image-preview-container.has-image {
-            border-style: solid;
-            border-color: rgba(255, 255, 255, 0.1);
+        .back-btn {
+            background: var(--white-card);
+            border: 1px solid var(--border-color);
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.1rem;
+            color: var(--text-dark);
+            position: absolute;
+            left: 0;
+            z-index: 10;
+        }
+
+        .back-btn:hover {
+            background: var(--hover-bg);
+        }
+
+        .close-process-btn {
+            background: var(--danger-color);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+            position: absolute;
+            right: 0;
+            z-index: 10;
+            box-shadow: 0 4px 6px rgba(239, 68, 68, 0.3);
+            transition: all 0.2s;
+        }
+
+        .close-process-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .screen-title {
+            font-weight: 600;
+            font-size: 1.2rem;
+            width: 100%;
+            text-align: center;
+        }
+
+        .desktop-title {
+            display: none;
+        }
+
+        /* --- HOME SCREEN --- */
+        h1 {
+            font-size: 2.2rem;
+            line-height: 1.2;
+            margin-bottom: 30px;
+            font-weight: 700;
+        }
+        
+        .greeting {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+            margin-bottom: 6px;
+        }
+
+        .card-main {
+            background: linear-gradient(135deg, #0A73B6, #3b82f6);
+            color: white;
+            padding: 28px;
+            border-radius: 24px;
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 10px 20px -5px rgba(10, 115, 182, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .card-main:hover {
+            transform: translateY(-2px);
+        }
+
+        .card-main h3 {
+            font-size: 1.8rem;
+            margin-bottom: 6px;
+            font-weight: 700;
+        }
+
+        .card-main p {
+            font-size: 0.95rem;
+            opacity: 0.9;
+        }
+
+        .card-main .icon-box {
+            background: rgba(255, 255, 255, 0.2);
+            width: 64px;
+            height: 64px;
+            border-radius: 50%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 1.8rem;
+        }
+
+        .grid-cards {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 20px;
+        }
+
+        .card-sm {
+            padding: 24px;
+            border-radius: 24px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            gap: 20px;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+            transition: transform 0.2s;
+        }
+
+        .card-sm:hover {
+            transform: translateY(-2px);
+        }
+
+        .card-red {
+            background: linear-gradient(135deg, #EF4444, #DC2626);
+            color: white;
+        }
+
+        .card-white {
+            background-color: var(--white-card);
+            border: 1px solid var(--border-color);
+        }
+
+        .card-sm h4 {
+            font-size: 1.2rem;
+            margin-bottom: 4px;
+            font-weight: 600;
+        }
+
+        .card-sm p {
+            font-size: 0.85rem;
+            opacity: 0.9;
+        }
+
+        .card-red .icon-box {
+            background: rgba(255,255,255,0.2);
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.4rem;
+        }
+
+        .card-white .icon-box {
+            color: var(--blue-card);
+            font-size: 1.8rem;
+        }
+        
+        /* --- RKO(CPR) SPECIFIC STYLES --- */
+        .cpr-circle {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            border: 10px solid var(--danger-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 5rem;
+            font-weight: 800;
+            color: var(--danger-color);
+            margin: 0 auto;
+            transition: 0.3s;
+            box-shadow: 0 0 30px rgba(239, 68, 68, 0.1);
+        }
+
+        .cpr-circle.pulsing {
+            animation: heartbeat 0.6s infinite;
+        }
+
+        @keyframes heartbeat {
+            0% { transform: scale(1); box-shadow: 0 0 20px rgba(239,68,68,0.1); }
+            50% { transform: scale(1.05); box-shadow: 0 0 50px rgba(239,68,68,0.4); }
+            100% { transform: scale(1); box-shadow: 0 0 20px rgba(239,68,68,0.1); }
+        }
+
+        .cpr-circle.breathing {
+            border-color: var(--blue-card);
+            color: var(--blue-card);
+            box-shadow: 0 0 30px rgba(10,115,182,0.1);
+        }
+
+        .cpr-circle.breathing.pulsing {
+            animation: breath 2.5s infinite;
+        }
+
+        @keyframes breath {
+            0% { transform: scale(1); box-shadow: 0 0 20px rgba(10,115,182,0.1); }
+            50% { transform: scale(1.1); box-shadow: 0 0 50px rgba(10,115,182,0.4); }
+            100% { transform: scale(1); box-shadow: 0 0 20px rgba(10,115,182,0.1); }
+        }
+
+        .cpr-circle.transition-mode {
+            border-color: var(--warning-color);
+            color: var(--warning-color);
+            box-shadow: 0 0 30px rgba(245,158,11,0.2);
+        }
+
+        /* --- SCAN SCREEN (CAPTURE) --- */
+        .scan-content-wrapper {
+            width: 100%;
+            max-width: 480px;
+            margin: 0 auto;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .camera-view {
+            background: linear-gradient(to bottom, #111827, #1F2937);
+            width: 100%;
+            aspect-ratio: 4/3;
+            border-radius: 24px;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.05);
+            margin-bottom: 20px;
+        }
+
+        .camera-ui-layer {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            pointer-events: none;
+        }
+
+        .focus-ring {
+            width: 130px;
+            height: 130px;
+            border: 1px solid rgba(255,255,255,0.4);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: rgba(255,255,255,0.7);
+            font-size: 0.8rem;
+            letter-spacing: 2px;
         }
 
         #imagePreview {
@@ -99,259 +403,1260 @@
             height: 100%;
             object-fit: cover;
             display: none;
-        }
-
-        .preview-placeholder {
-            color: var(--text-muted);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-        }
-
-        .preview-placeholder i {
-            font-size: 2rem;
-            color: rgba(255, 255, 255, 0.2);
-        }
-
-        .actions {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 1rem;
-        }
-
-        .btn-upload {
-            background: rgba(255, 255, 255, 0.05);
-            color: var(--text-light);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            padding: 1rem 0.5rem;
-            border-radius: 12px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: all 0.2s ease;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 0.5rem;
-            font-family: 'Outfit', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .btn-upload:hover, .btn-upload:active {
-            background: rgba(255, 255, 255, 0.1);
-            transform: translateY(-2px);
-        }
-
-        .btn-upload i {
-            font-size: 1.5rem;
-            color: var(--primary);
-        }
-
-        .btn-analyze { 
-            background: var(--primary); 
-            color: white; 
-            border: none; 
-            padding: 1rem; 
-            border-radius: 12px; 
-            cursor: pointer; 
-            font-size: 1.1rem; 
-            font-weight: 800;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); 
-            width: 100%;
-            font-family: 'Outfit', sans-serif;
-            margin-top: 0.5rem;
-            box-shadow: 0 10px 15px -3px rgba(59, 130, 246, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0.5rem;
-            -webkit-tap-highlight-color: transparent;
-        }
-
-        .btn-analyze:disabled {
-            background: #475569;
-            box-shadow: none;
-            cursor: not-allowed;
-            transform: none;
-            opacity: 0.7;
-        }
-
-        .btn-analyze:not(:disabled):hover, .btn-analyze:not(:disabled):active { 
-            background: var(--primary-hover); 
-            transform: translateY(-2px);
-            box-shadow: 0 10px 25px -3px rgba(59, 130, 246, 0.5);
-        }
-
-        .result-panel {
-            margin-top: 1rem;
-            padding: 1rem;
-            border-radius: 12px;
-            background: rgba(0,0,0,0.2);
-            font-size: 1.1rem;
-            font-weight: 600;
-            display: none;
-            animation: fadeIn 0.5s ease;
-            text-align: left;
-        }
-
-        .result-panel.success {
-            border-left: 4px solid var(--success);
-            color: var(--text-light);
-        }
-
-        .result-panel.error {
-            border-left: 4px solid var(--danger);
-            color: #fca5a5;
-        }
-
-        .loader-overlay {
-            display: none;
             position: absolute;
             inset: 0;
-            background: rgba(30, 41, 59, 0.8);
-            backdrop-filter: blur(4px);
-            border-radius: 16px;
-            align-items: center;
-            justify-content: center;
-            flex-direction: column;
-            gap: 1rem;
+            z-index: 5;
+        }
+
+        .action-buttons-scan {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            width: 100%;
             z-index: 10;
         }
 
-        .spinner {
-            width: 40px;
-            height: 40px;
-            border: 4px solid rgba(255, 255, 255, 0.1);
-            border-left-color: var(--primary);
-            border-radius: 50%;
-            animation: spin 1s linear infinite;
+        .btn-action {
+            flex: 1;
+            min-width: 140px;
+            padding: 16px;
+            border: none;
+            border-radius: 16px;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            transition: 0.2s;
         }
 
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .btn-capture {
+            background: var(--white-card);
+            color: var(--text-dark);
+            border: 1px solid var(--border-color);
+        }
 
-        input[type="file"] { display: none; }
+        .btn-capture:hover {
+            background: var(--hover-bg);
+        }
 
-    .chat-container {
-        display: flex;
-        flex-direction: column;
-        gap: 10px;
-        max-height: 350px;
-        overflow-y: auto;
-        margin-top: 20px;
-        padding: 15px;
-        background: #f8fafc;
-        border-radius: 12px;
-        border: 1px solid #e2e8f0;
-    }
+        .btn-analyze {
+            background: var(--blue-card);
+            color: white;
+            display: none;
+        }
 
-    .chat-bubble {
-        max-width: 85%;
-        padding: 10px 14px;
-        border-radius: 16px;
-        font-size: 15px;
-        line-height: 1.4;
-        animation: fadeIn 0.3s ease-out;
-        word-wrap: break-word;
-    }
+        .btn-analyze:hover {
+            background: var(--blue-hover);
+        }
 
-    /* Dymek Asystenta (Lewa strona, niebieski) */
-    .chat-bubble.ai {
-        align-self: flex-start;
-        background-color: #e0f2fe;
-        color: #0369a1;
-        border-bottom-left-radius: 4px;
-    }
+        .btn-analyze:disabled {
+            background: #9CA3AF;
+            cursor: not-allowed;
+        }
 
-    /* Dymek Użytkownika (Prawa strona, zielony) */
-    .chat-bubble.user {
-        align-self: flex-end;
-        background-color: #10b981;
-        color: white;
-        border-bottom-right-radius: 4px;
-    }
+        .result-panel {
+            margin-top: 20px;
+            padding: 16px;
+            border-radius: 16px;
+            background: var(--white-card);
+            font-size: 1.05rem;
+            font-weight: 600;
+            display: none;
+            text-align: center;
+            border: 1px solid var(--border-color);
+            width: 100%;
+        }
 
-    @keyframes fadeIn {
-        from { opacity: 0; transform: translateY(10px); }
-        to { opacity: 1; transform: translateY(0); }
-    }
+        .result-panel.error {
+            color: #DC2626;
+            background: rgba(254, 226, 226, 0.1);
+            border-color: #F87171;
+        }
+
+        .loader-overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.6);
+            z-index: 20;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            border-radius: 24px;
+        }
+
+        .spinner {
+            width: 44px;
+            height: 44px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-left-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 12px;
+        }
+
+        /* --- DIAGNOSIS RESULT SCREEN --- */
+        .diagnosis-wrapper {
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .diag-image-container {
+            width: 100%;
+            height: 220px;
+            border-radius: 24px;
+            overflow: hidden;
+            margin-bottom: 20px;
+            background: #E5E7EB;
+            position: relative;
+        }
+
+        .diag-image-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .diag-header {
+            margin-bottom: 20px;
+        }
+
+        .severity-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            padding: 6px 12px;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .severity-badge.moderate {
+            background: rgba(245, 158, 11, 0.15);
+            color: #D97706;
+        }
+
+        .severity-badge.mild {
+            background: rgba(16, 185, 129, 0.15);
+            color: #059669;
+        }
+
+        .severity-badge.severe {
+            background: rgba(239, 68, 68, 0.15);
+            color: #DC2626;
+        }
+
+        .diag-title {
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            color: var(--text-dark);
+            text-transform: capitalize;
+        }
+
+        .diag-subtitle {
+            color: var(--text-muted);
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .btn-voice {
+            width: 100%;
+            padding: 18px;
+            background: var(--blue-card);
+            color: white;
+            border-radius: 16px;
+            border: none;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 20px;
+            transition: 0.3s;
+            box-shadow: 0 4px 10px rgba(10, 115, 182, 0.2);
+        }
+
+        .btn-voice:hover {
+            background: var(--blue-hover);
+            transform: translateY(-2px);
+        }
+
+        .btn-voice.active {
+            background: var(--danger-color);
+            box-shadow: 0 4px 10px rgba(239, 68, 68, 0.2);
+        }
+
+        /* Steps Card */
+        .card-steps {
+            background: var(--white-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 20px;
+        }
+
+        .steps-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            margin-bottom: 16px;
+        }
+
+        .steps-header h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 0;
+            font-weight: 700;
+        }
+
+        .steps-header i {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .steps-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .steps-list li {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            align-items: flex-start;
+            font-size: 1rem;
+            color: var(--text-dark);
+            line-height: 1.4;
+        }
+
+        .steps-list li i {
+            font-size: 1.2rem;
+            margin-top: 2px;
+        }
+
+        /* Collapsed Steps Button */
+        .btn-collapsed-steps {
+            background: var(--white-card);
+            border: 1px solid var(--border-color);
+            padding: 16px 20px;
+            border-radius: 16px;
+            font-weight: 600;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            cursor: pointer;
+            color: var(--text-dark);
+            margin-bottom: 20px;
+            transition: 0.2s;
+        }
+
+        .btn-collapsed-steps:hover {
+            background: var(--hover-bg);
+        }
+
+        /* Transcription Card */
+        .card-transcription {
+            background: var(--white-card);
+            border: 1px solid var(--border-color);
+            border-radius: 24px;
+            padding: 24px;
+            margin-bottom: 20px;
+            border-left: 4px solid var(--blue-card);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .card-transcription h3 {
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 12px;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .transcription-box {
+            min-height: 100px;
+            background: var(--bg-main);
+            border-radius: 12px;
+            padding: 16px;
+            font-style: italic;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        /* --- AI CHAT SCREEN --- */
+        .chat-container {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: var(--white-card);
+            border-radius: 24px;
+            border: 1px solid var(--border-color);
+            overflow: hidden;
+            margin-top: 10px;
+            max-width: 800px;
+            width: 100%;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .msg {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 16px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+
+        .msg.ai {
+            background: var(--hover-bg);
+            color: var(--text-dark);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            border: 1px solid var(--border-color);
+        }
+
+        .msg.user {
+            background: var(--blue-card);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+
+        .chat-input-area {
+            padding: 16px;
+            border-top: 1px solid var(--border-color);
+            display: flex;
+            gap: 10px;
+            background: var(--white-card);
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            background: var(--white-card);
+            color: var(--text-dark);
+            border-radius: 24px;
+            outline: none;
+            font-size: 0.95rem;
+        }
+
+        .btn-send {
+            background: var(--blue-card);
+            color: white;
+            border: none;
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+
+        /* --- EMERGENCY NUMBERS SCREEN --- */
+        .emergency-list {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            margin-top: 10px;
+            max-width: 800px;
+            margin-left: auto;
+            margin-right: auto;
+            width: 100%;
+        }
+
+        .emergency-link {
+            display: flex;
+            align-items: center;
+            background: var(--white-card);
+            padding: 20px;
+            border-radius: 20px;
+            text-decoration: none;
+            color: var(--text-dark);
+            border: 1px solid var(--border-color);
+            transition: 0.2s;
+        }
+
+        .emergency-link:hover {
+            transform: translateY(-2px);
+            border-color: #EF4444;
+        }
+
+        .emergency-link .e-icon {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.1);
+            color: #EF4444;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 16px;
+        }
+
+        .emergency-link .e-info {
+            flex: 1;
+        }
+
+        .emergency-link h3 {
+            font-size: 1.6rem;
+            font-weight: 800;
+            color: #EF4444;
+            margin-bottom: 4px;
+        }
+
+        .emergency-link p {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .emergency-link .e-action {
+            color: #10B981;
+            font-size: 1.5rem;
+            background: rgba(16, 185, 129, 0.1);
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- PROFILE SCREEN --- */
+        .profile-container {
+            width: 100%;
+            max-width: 500px;
+            margin: 0 auto;
+            margin-top: 20px;
+            text-align: center;
+        }
+
+        .profile-form {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            margin-top: 30px;
+            text-align: left;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .form-group label {
+            font-size: 0.9rem;
+            color: var(--text-muted);
+            font-weight: 600;
+        }
+
+        .form-group input {
+            padding: 14px;
+            border: 1px solid var(--border-color);
+            background: var(--white-card);
+            color: var(--text-dark);
+            border-radius: 12px;
+            font-size: 1rem;
+            outline: none;
+            transition: 0.2s;
+        }
+
+        .form-group input:focus {
+            border-color: var(--blue-card);
+        }
+
+        .setting-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 20px 0;
+            border-top: 1px solid var(--border-color);
+            margin-top: 10px;
+        }
+
+        .setting-info h4 {
+            font-size: 1.1rem;
+            margin-bottom: 4px;
+            color: var(--text-dark);
+        }
+
+        .setting-info p {
+            font-size: 0.85rem;
+            color: var(--text-muted);
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 50px;
+            height: 28px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #ccc;
+            transition: .4s;
+            border-radius: 34px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 20px;
+            width: 20px;
+            left: 4px;
+            bottom: 4px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--blue-card);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+
+        /* --- NAVIGATION --- */
+        .sidebar-brand {
+            display: none;
+        }
+
+        .main-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: var(--nav-bg);
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            padding: 10px 10px 20px 10px;
+            border-top: 1px solid var(--border-color);
+            z-index: 100;
+        }
+
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+            text-decoration: none;
+            flex: 1;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+
+        .nav-item i {
+            font-size: 1.3rem;
+        }
+
+        .nav-item.active {
+            color: var(--blue-card);
+            font-weight: 600;
+        }
+
+        .nav-item-scan {
+            background-color: var(--blue-card);
+            color: white !important;
+            width: 56px;
+            height: 56px;
+            border-radius: 50%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            transform: translateY(-15px);
+            box-shadow: 0 8px 16px rgba(10, 115, 182, 0.3);
+            flex: none;
+            border: 4px solid var(--bg-main);
+        }
+
+        .nav-item-scan i {
+            font-size: 1.4rem;
+            color: white;
+            margin-bottom: 0;
+        }
+
+        .nav-item-scan span {
+            display: none;
+        }
+
+        /* =========================================================
+           DESKTOP VERSION (Above 768px width)
+           ========================================================= */
+        @media (min-width: 768px) {
+            .app-container {
+                flex-direction: row;
+            }
+
+            .main-nav {
+                position: static;
+                width: 280px;
+                min-width: 280px;
+                flex-direction: column;
+                justify-content: flex-start;
+                padding: 40px 24px;
+                border-top: none;
+                border-right: 1px solid var(--border-color);
+                gap: 12px;
+            }
+
+            .sidebar-brand {
+                display: flex;
+                align-items: center;
+                gap: 12px;
+                font-weight: 800;
+                font-size: 1.5rem;
+                margin-bottom: 40px;
+                padding-left: 10px;
+            }
+
+            .mobile-header-logo {
+                display: none;
+            }
+
+            .nav-item {
+                flex-direction: row;
+                justify-content: center;
+                padding: 16px 20px;
+                border-radius: 12px;
+                font-size: 1.05rem;
+                flex: none;
+                width: 100%;
+            }
+
+            .nav-item i {
+                width: 30px;
+                text-align: center;
+            }
+
+            .nav-item:hover {
+                background-color: var(--hover-bg);
+            }
+
+            .nav-item.active {
+                background-color: var(--active-bg);
+                color: var(--blue-card);
+            }
+
+            .nav-item-scan {
+                background-color: transparent;
+                color: var(--text-muted) !important;
+                width: 100%;
+                height: auto;
+                transform: none;
+                box-shadow: none;
+                border: none;
+            }
+
+            .nav-item-scan.active {
+                background-color: var(--active-bg);
+                color: var(--blue-card) !important;
+            }
+
+            .nav-item-scan i {
+                font-size: 1.3rem;
+                color: inherit;
+            }
+
+            .nav-item-scan span {
+                display: inline;
+                color: inherit;
+            }
+
+            .screen {
+                padding: 40px 80px;
+                max-width: 1200px;
+                margin: 0 auto;
+            }
+
+            .grid-cards {
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .header {
+                justify-content: flex-end;
+            }
+
+            .back-btn {
+                display: none;
+            }
+
+            .desktop-title {
+                display: block;
+                text-align: left;
+                font-size: 1.8rem;
+                margin-bottom: 20px;
+            }
+
+            .close-process-btn {
+                top: 40px;
+                right: 80px;
+            }
+        }
+
+        input[type="file"] {
+            display: none;
+        }
     </style>
 </head>
 <body>
 
-<div class="container">
-    <div class="header">
-        <h1>RescuAR</h1>
-        <p>AI Wound Analyzer</p>
-    </div>
+<div class="app-container">
 
-    <div class="card">
-        <p style="margin:0; font-size: 0.95rem; color: var(--text-muted);">Zrób zdjęcie rany lub wybierz z galerii, aby dokonać analizy.</p>
+    <nav class="main-nav">
+        <div class="sidebar-brand">
+            <div class="logo-icon"><i class="fas fa-heart"></i></div>
+            RescuAR
+        </div>
+        <a class="nav-item active" onclick="switchScreen('homeScreen', this, 0)">
+            <i class="fas fa-home"></i><span>Home</span>
+        </a>
+        <a class="nav-item" onclick="switchScreen('chatScreen', this, 1)">
+            <i class="far fa-comment-dots"></i><span>Chat</span>
+        </a>
+        <a class="nav-item nav-item-scan" onclick="goToScan(this, 2)">
+            <i class="fas fa-camera"></i><span>Scan</span>
+        </a>
+        <a class="nav-item" onclick="switchScreen('emergencyScreen', this, 3)">
+            <i class="fas fa-phone-alt" style="color: #EF4444;"></i><span style="color: #EF4444; font-weight:600;">SOS</span>
+        </a>
+        <a class="nav-item" onclick="switchScreen('profileScreen', this, 4)">
+            <i class="fas fa-user"></i><span>Profile</span>
+        </a>
+    </nav>
 
-        <div class="image-preview-container" id="previewContainer">
-            <div class="preview-placeholder" id="previewPlaceholder">
-                <i class="fas fa-image"></i>
-                <span>Brak zdjęcia</span>
+    <div class="screen-wrapper">
+
+        <div id="homeScreen" class="screen active">
+            <div class="header">
+                <div class="logo-area mobile-header-logo">
+                    <div class="logo-icon"><i class="fas fa-heart"></i></div>
+                    RescuAR
+                </div>
+                <div class="avatar user-avatar">AM</div>
             </div>
-            <img id="imagePreview" alt="Podgląd rany">
+            <div style="max-width: 800px; width: 100%;">
+                <p class="greeting" id="greetingText">Hello</p>
+                <h1>How can we help you today?</h1>
+                <div class="card-main" onclick="goToScan(null, 2)">
+                    <div class="texts">
+                        <p style="font-size:0.8rem; letter-spacing:1px; margin-bottom:8px; text-transform:uppercase; font-weight:700; opacity:0.9;">AI Camera</p>
+                        <h3>Scan injury</h3>
+                        <p>Instant wound diagnosis from a photo</p>
+                    </div>
+                    <div class="icon-box"><i class="fas fa-camera"></i></div>
+                </div>
+                <div class="grid-cards">
+                    <div class="card-sm card-red" onclick="switchScreen('cprScreen', null, -1)">
+                        <div class="icon-box"><i class="fas fa-heartbeat"></i></div>
+                        <div>
+                            <h4>Emergency CPR</h4>
+                            <p>First aid audio-visual guide</p>
+                        </div>
+                    </div>
+                    <div class="card-sm card-white" onclick="switchScreen('chatScreen', null, 1)">
+                        <div class="icon-box"><i class="far fa-comment-dots"></i></div>
+                        <div>
+                            <h4>Ask AI</h4>
+                            <p>Live medical chat</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="cprScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="stopCpr(); switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">First Aid (CPR)</span>
+            </div>
+            <h2 class="screen-title desktop-title">First Aid (CPR)</h2>
             
-            <div class="loader-overlay" id="loaderOverlay">
-                <div class="spinner"></div>
-                <span style="font-weight: 600; font-size: 0.9rem;">Analiza w toku...</span>
+            <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; flex:1; text-align:center; max-width:600px; margin: 0 auto; width:100%;">
+                <div id="cprPulseCircle" class="cpr-circle">
+                    <span id="cprTimerDisplay">00</span>
+                </div>
+                <h3 id="cprInstruction" style="font-size:1.8rem; margin: 30px 0 10px 0; color:var(--text-dark);">Ready for CPR</h3>
+                <p id="cprSubInstruction" style="color:var(--text-muted); margin-bottom:40px; font-size:1.1rem;">Press start to follow the rhythm.</p>
+                
+                <button id="btnCprToggle" class="btn-action" style="background:var(--danger-color); color:white; width:100%; max-width:300px; padding:20px; font-size:1.2rem; border-radius:24px; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);" onclick="toggleCpr()">
+                    <i class="fas fa-play"></i> Start CPR
+                </button>
             </div>
         </div>
-        
-        <div class="actions">
-            <input type="file" id="cameraInput" accept="image/*" capture="environment">
-            <label for="cameraInput" class="btn-upload" onclick="playClick()">
-                <i class="fas fa-camera"></i>
-                Zrób zdjęcie
-            </label>
 
-            <input type="file" id="galleryInput" accept="image/*">
-            <label for="galleryInput" class="btn-upload" onclick="playClick()">
-                <i class="fas fa-folder-open"></i>
-                Z galerii
-            </label>
+        <div id="scanScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">Scan injury</span>
+            </div>
+            <h2 class="screen-title desktop-title">Scan injury</h2>
+            <div class="scan-content-wrapper">
+                <div class="camera-view" id="cameraContainer">
+                    <div class="camera-ui-layer" id="cameraUI">
+                        <div class="focus-ring">FOCUS</div>
+                    </div>
+                    <img id="imagePreview" alt="Wound preview">
+                    <div class="loader-overlay" id="loaderOverlay">
+                        <div class="spinner"></div>
+                        <span>Analysis in progress...</span>
+                    </div>
+                </div>
+                <p style="text-align:center; color:var(--text-muted); margin-bottom:20px; font-size:0.9rem;">
+                    Frame the injury in good lighting. Photos are securely analyzed by AI.
+                </p>
+                <div class="action-buttons-scan">
+                    <input type="file" id="cameraInput" accept="image/*" capture="environment">
+                    <input type="file" id="galleryInput" accept="image/*">
+                    <label for="cameraInput" class="btn-action btn-capture" id="btnTakePic">
+                        <i class="fas fa-camera"></i> Take photo
+                    </label>
+                    <label for="galleryInput" class="btn-action btn-capture" id="btnGallery">
+                        <i class="fas fa-folder-open"></i> From gallery
+                    </label>
+                    <button class="btn-action btn-analyze" id="analyzeBtn" onclick="analyze()">
+                        <i class="fas fa-microscope"></i> Analyze result
+                    </button>
+                </div>
+                <div id="resultPanel" class="result-panel"></div>
+            </div>
         </div>
 
-        <button class="btn-analyze" id="analyzeBtn" onclick="analyze()" disabled>
-            <i class="fas fa-microscope"></i> Analizuj zdjęcie
-        </button>
+        <div id="diagnosisScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">AI Diagnosis</span>
+                <button class="close-process-btn" onclick="endProcess()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <h2 class="screen-title desktop-title">AI Diagnosis</h2>
+            <div class="diagnosis-wrapper">
+                <div class="diag-image-container">
+                    <img id="diagImageResult" src="" alt="Analyzed wound">
+                </div>
+                <div class="diag-header">
+                    <span class="severity-badge" id="diagSeverityBadge">
+                        <i class="fas fa-exclamation-triangle"></i> MODERATE
+                    </span>
+                    <h2 class="diag-title" id="diagTitle">Diagnosis Name</h2>
+                    <p class="diag-subtitle" id="diagSubtitle">Analyzed details will appear here.</p>
+                </div>
+                <button class="btn-voice" id="btnVoiceAssistant" onclick="toggleVoiceAssistant()">
+                    <i class="fas fa-microphone"></i> Start Voice Assistant
+                </button>
+                <div class="card-steps" id="stepsCard">
+                    <div class="steps-header" onclick="toggleCollapsedSteps()">
+                        <h3>What this means</h3>
+                        <i class="fas fa-chevron-up"></i>
+                    </div>
+                    <ul class="steps-list" id="stepsList"></ul>
+                </div>
+                <button class="btn-collapsed-steps" id="btnCollapsedSteps" style="display:none;" onclick="toggleCollapsedSteps()">
+                    <span><i class="fas fa-list-ul" style="margin-right:8px; color:var(--blue-card);"></i> First Aid Steps</span>
+                    <i class="fas fa-chevron-down"></i>
+                </button>
+                <div class="card-transcription" id="transcriptionCard" style="display:none;">
+                    <h3><i class="fas fa-wave-square" style="color:var(--blue-card);"></i> Live Transcription</h3>
+                    <div class="transcription-box">
+                        <p id="transcriptionText">Listening...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
 
-        <div id="resultPanel" class="result-panel"></div>
+        <div id="chatScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">Medical AI Chat</span>
+            </div>
+            <h2 class="screen-title desktop-title">Medical AI Chat</h2>
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="msg ai">Hello! I am an AI medical assistant. Describe your symptoms or ask a first aid question, and I will try to help.</div>
+                </div>
+                <div class="chat-input-area">
+                    <input type="text" id="chatInput" placeholder="Type a message..." onkeypress="handleChatEnter(event)">
+                    <button class="btn-send" onclick="sendChatMessage()">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="emergencyScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">Emergency Numbers</span>
+            </div>
+            <h2 class="screen-title desktop-title">Emergency Numbers</h2>
+            <p style="color:var(--text-muted); margin-bottom:10px; text-align:center;">Tap a number to call immediately from your device.</p>
+            <div class="emergency-list">
+                <a href="tel:112" class="emergency-link">
+                    <div class="e-icon"><i class="fas fa-star-of-life"></i></div>
+                    <div class="e-info">
+                        <h3>112</h3>
+                        <p>Emergency Call Center</p>
+                    </div>
+                    <div class="e-action"><i class="fas fa-phone"></i></div>
+                </a>
+                <a href="tel:999" class="emergency-link">
+                    <div class="e-icon"><i class="fas fa-ambulance"></i></div>
+                    <div class="e-info">
+                        <h3>999</h3>
+                        <p>Ambulance</p>
+                    </div>
+                    <div class="e-action"><i class="fas fa-phone"></i></div>
+                </a>
+                <a href="tel:998" class="emergency-link">
+                    <div class="e-icon"><i class="fas fa-fire-extinguisher"></i></div>
+                    <div class="e-info">
+                        <h3>998</h3>
+                        <p>Fire Brigade</p>
+                    </div>
+                    <div class="e-action"><i class="fas fa-phone"></i></div>
+                </a>
+                <a href="tel:997" class="emergency-link">
+                    <div class="e-icon"><i class="fas fa-shield-alt"></i></div>
+                    <div class="e-info">
+                        <h3>997</h3>
+                        <p>Police</p>
+                    </div>
+                    <div class="e-action"><i class="fas fa-phone"></i></div>
+                </a>
+            </div>
+        </div>
+
+        <div id="profileScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">User Profile</span>
+            </div>
+            <h2 class="screen-title desktop-title">User Profile</h2>
+            <div class="profile-container">
+                <div class="avatar user-avatar" style="width:100px; height:100px; font-size:2.5rem; margin:0 auto; margin-bottom:10px;">AM</div>
+                <h3 id="profileFullName" style="font-size:1.5rem; margin-bottom:5px;"> </h3>
+                <div class="profile-form">
+                    <div class="form-group">
+                        <label>First Name</label>
+                        <input type="text" id="profileFirstName" value=" " oninput="updateProfile()">
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name</label>
+                        <input type="text" id="profileLastName" value=" " oninput="updateProfile()">
+                    </div>
+                    <div class="setting-row">
+                        <div class="setting-info">
+                            <h4>Dark Mode</h4>
+                            <p>Switch to dark theme</p>
+                        </div>
+                        <label class="switch">
+                            <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </div>
-
-    <div id="chatContainer" class="chat-container" style="display: none;"></div>
 </div>
 
 <script>
-    let selectedFile = null;
+    let isProcessActive = false; 
 
-    // Elementy UI
-    const cameraInput = document.getElementById('cameraInput');
-    const galleryInput = document.getElementById('galleryInput');
-    const imagePreview = document.getElementById('imagePreview');
-    const previewContainer = document.getElementById('previewContainer');
-    const previewPlaceholder = document.getElementById('previewPlaceholder');
-    const analyzeBtn = document.getElementById('analyzeBtn');
-    const resultPanel = document.getElementById('resultPanel');
-    const loaderOverlay = document.getElementById('loaderOverlay');
-    let scenarioArray = [];
-    let currentScenarioIndex = 0;
-    let recognitionText = null;
-    let audioContext = null;
-    let mediaRecorder = null;
-    let audioChunks = [];
-    const messageHistory = [];
-    let isChatMode = false;
+    // --- RKO AUDIO (METRONOM I WDECHY) ---
+    let audioCtx;
+    let beepInterval;
 
-    function playClick() {
-        if (navigator.vibrate) {
-            navigator.vibrate(50);
+    function playBeep() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        
+        oscillator.type = 'sine'; // Krótki, czysty dźwięk
+        oscillator.frequency.setValueAtTime(800, audioCtx.currentTime); 
+        
+        gainNode.gain.setValueAtTime(0.5, audioCtx.currentTime); 
+        gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.1); 
+        
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + 0.1);
+    }
+
+    // Dźwięk wdechu
+    function playBreath() {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        // 1. Generowanie "szumu"
+        const bufferSize = audioCtx.sampleRate * 2; 
+        const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+            data[i] = Math.random() * 2 - 1; // Losowe dźwięki szumu z "bazy"
+        }
+        
+        const noiseSource = audioCtx.createBufferSource();
+        noiseSource.buffer = buffer;
+        
+        // 2. Filtr, którym obcinam wysokie tony
+        const filter = audioCtx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 500; 
+        
+        // 3. "Ruch" dźwięku (rośnięcie i opadanie)
+        const gainNode = audioCtx.createGain();
+        gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
+        gainNode.gain.linearRampToValueAtTime(0.8, audioCtx.currentTime + 0.6); // Dmuchnięcie
+        gainNode.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.5); // Koniec wdechu
+        
+        // 4. Połączenie i odtworzenie utworzonego dźwięku
+        noiseSource.connect(filter);
+        filter.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        
+        noiseSource.start(audioCtx.currentTime);
+        noiseSource.stop(audioCtx.currentTime + 1.6);
+    }
+
+    function manageMetronome(forceStop = false) {
+        if (forceStop || cprPhase !== 0 || isTransitioning || !isCprRunning) {
+            clearInterval(beepInterval);
+            beepInterval = null;
+        } else if (!beepInterval && cprPhase === 0 && !isTransitioning && isCprRunning) {
+            playBeep(); 
+            beepInterval = setInterval(playBeep, 600); // 100 BPM
         }
     }
+
+    // --- RKO logika ---
+    let cprInterval;
+    let isCprRunning = false;
+    let cprPhase = 0; // 0 = uciśnięcia, 1 = wdechy
+    let cprTime = 0;
+    
+    let isTransitioning = false;
+    let transitionTime = 3; 
+
+    const cprSteps = [
+        { title: "30 Compressions", sub: "Push hard and fast (100-120 BPM)", time: 18, class: "pulsing" },
+        { title: "2 Rescue Breaths", sub: "Tilt head back, give 2 breaths", time: 5, class: "breathing pulsing" }
+    ];
+
+    function toggleCpr() {
+        if (isCprRunning) stopCpr();
+        else startCprCountdown();
+    }
+
+    function startCprCountdown() {
+        isCprRunning = true;
+        let prepTime = 3;
+        
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        
+        document.getElementById('btnCprToggle').innerHTML = '<i class="fas fa-stop"></i> Stop CPR';
+        document.getElementById('btnCprToggle').style.background = 'var(--text-muted)';
+        
+        document.getElementById('cprInstruction').textContent = "Get Ready...";
+        document.getElementById('cprSubInstruction').textContent = "Starting in...";
+        document.getElementById('cprPulseCircle').className = "cpr-circle transition-mode";
+        document.getElementById('cprTimerDisplay').textContent = "0" + prepTime;
+
+        if (navigator.vibrate) navigator.vibrate(100);
+
+        cprInterval = setInterval(() => {
+            if (prepTime > 1) {
+                prepTime--;
+                document.getElementById('cprTimerDisplay').textContent = "0" + prepTime;
+                if (navigator.vibrate) navigator.vibrate(100);
+            } else {
+                clearInterval(cprInterval);
+                if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                beginCprCycle(); 
+            }
+        }, 1000);
+    }
+
+    function beginCprCycle() {
+        cprPhase = 0;
+        cprTime = cprSteps[0].time;
+        isTransitioning = false;
+        updateCprUI();
+        manageMetronome(); 
+        
+        cprInterval = setInterval(() => {
+            if (isTransitioning) {
+                transitionTime--;
+                if (transitionTime < 0) {
+                    isTransitioning = false;
+                    cprPhase = (cprPhase + 1) % 2;
+                    cprTime = cprSteps[cprPhase].time;
+                    updateCprUI();
+                    manageMetronome(); 
+                } else {
+                    document.getElementById('cprTimerDisplay').textContent = transitionTime.toString().padStart(2, '0');
+                }
+            } else {
+                cprTime--;
+                if (cprTime < 0) {
+                    isTransitioning = true;
+                    transitionTime = 3;
+                    if (navigator.vibrate) navigator.vibrate([200, 100, 200]);
+                    
+                    manageMetronome(true); 
+                    
+                    const nextPhase = (cprPhase + 1) % 2;
+                    document.getElementById('cprInstruction').textContent = "Get Ready...";
+                    document.getElementById('cprSubInstruction').textContent = nextPhase === 0 ? "Prepare for Compressions" : "Prepare for Breaths";
+                    document.getElementById('cprPulseCircle').className = "cpr-circle transition-mode";
+                    document.getElementById('cprTimerDisplay').textContent = transitionTime.toString().padStart(2, '0');
+                } else {
+                    updateCprUI();
+                    
+                    // Odtwarzanie dźwięku wdechu w 4 i 2 sekundzie fazy oddechów
+                    if (cprPhase === 1 && (cprTime === 4 || cprTime === 2)) {
+                        playBreath();
+                    }
+                }
+            }
+        }, 1000);
+    }
+
+    function stopCpr() {
+        isCprRunning = false;
+        clearInterval(cprInterval);
+        manageMetronome(true); 
+        
+        document.getElementById('btnCprToggle').innerHTML = '<i class="fas fa-play"></i> Start CPR';
+        document.getElementById('btnCprToggle').style.background = 'var(--danger-color)';
+        document.getElementById('cprTimerDisplay').textContent = "00";
+        document.getElementById('cprInstruction').textContent = "Ready for CPR";
+        document.getElementById('cprSubInstruction').textContent = "Press start to follow the rhythm.";
+        document.getElementById('cprPulseCircle').className = "cpr-circle";
+    }
+
+    function updateCprUI() {
+        const step = cprSteps[cprPhase];
+        document.getElementById('cprTimerDisplay').textContent = cprTime.toString().padStart(2, '0');
+        document.getElementById('cprInstruction').textContent = step.title;
+        document.getElementById('cprSubInstruction').textContent = step.sub;
+        document.getElementById('cprPulseCircle').className = "cpr-circle " + step.class;
+    }
+
+    // --- Pozostała logika ---
+    function updateProfile() {
+        const firstName = document.getElementById('profileFirstName').value.trim();
+        const lastName = document.getElementById('profileLastName').value.trim();
+        document.getElementById('greetingText').textContent = firstName ? `Hello, ${firstName}` : `Hello`;
+        document.getElementById('profileFullName').textContent = (firstName || lastName) ? `${firstName} ${lastName}`.trim() : 'User';
+        let initials = (firstName ? firstName.charAt(0).toUpperCase() : '') + (lastName ? lastName.charAt(0).toUpperCase() : '');
+        document.querySelectorAll('.user-avatar').forEach(avatar => avatar.textContent = initials || '?');
+    }
+
+    function toggleTheme() {
+        document.body.classList.toggle('dark-mode', document.getElementById('themeToggle').checked);
+    }
+
+    function switchScreen(screenId, navElement = null, navIndex = 0) {
+        if (navigator.vibrate) navigator.vibrate(20);
+        
+        if (screenId !== 'cprScreen' && isCprRunning) {
+            stopCpr();
+        }
+
+        document.querySelectorAll('.screen').forEach(el => el.classList.remove('active'));
+        document.getElementById(screenId).classList.add('active');
+        document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+        
+        if (navElement) {
+            navElement.classList.add('active');
+        } else if (navIndex >= 0) {
+            const navItems = document.querySelectorAll('.nav-item');
+            if (navItems[navIndex]) navItems[navIndex].classList.add('active');
+        }
+    }
+
+    function goToScan(navElement = null, navIndex = 2) {
+        if (isProcessActive) switchScreen('diagnosisScreen', navElement, navIndex);
+        else switchScreen('scanScreen', navElement, navIndex);
+    }
+
+    let selectedFile = null;
+    const cameraUI = document.getElementById('cameraUI');
+    const imagePreview = document.getElementById('imagePreview');
+    const analyzeBtn = document.getElementById('analyzeBtn');
+    const btnTakePic = document.getElementById('btnTakePic');
+    const btnGallery = document.getElementById('btnGallery');
+    const resultPanel = document.getElementById('resultPanel');
+    const loaderOverlay = document.getElementById('loaderOverlay');
 
     function handleFileSelect(event) {
         const file = event.target.files[0];
@@ -361,279 +1666,179 @@
             reader.onload = function(e) {
                 imagePreview.src = e.target.result;
                 imagePreview.style.display = 'block';
-                previewPlaceholder.style.display = 'none';
-                previewContainer.classList.add('has-image');
-                analyzeBtn.disabled = false;
+                cameraUI.style.display = 'none';
+                btnTakePic.style.display = 'none';
+                btnGallery.style.display = 'none';
+                analyzeBtn.style.display = 'flex';
                 resultPanel.style.display = 'none';
             }
             reader.readAsDataURL(file);
         }
     }
 
-    cameraInput.addEventListener('change', handleFileSelect);
-    galleryInput.addEventListener('change', handleFileSelect);
-
-function addChatBubble(text, sender) {
-    const chatContainer = document.getElementById('chatContainer');
-    if (chatContainer.style.display === 'none') chatContainer.style.display = 'flex';
-
-    const bubble = document.createElement('div');
-    bubble.classList.add('chat-bubble', sender);
-    const icon = sender === 'ai' ? '<i class="fas fa-robot"></i> ' : '<i class="fas fa-user"></i> ';
-    bubble.innerHTML = icon + text;
-    chatContainer.appendChild(bubble);
-    chatContainer.scrollTop = chatContainer.scrollHeight;
-}
+    document.getElementById('cameraInput').addEventListener('change', handleFileSelect);
+    document.getElementById('galleryInput').addEventListener('change', handleFileSelect);
 
     async function analyze() {
         if (!selectedFile) return;
-
-        playClick();
+        if (navigator.vibrate) navigator.vibrate(50);
         const formData = new FormData();
         formData.append('file', selectedFile);
-
+        
         resultPanel.style.display = 'none';
-        resultPanel.className = 'result-panel';
         loaderOverlay.style.display = 'flex';
         analyzeBtn.disabled = true;
-
+        
         try {
-            const response = await fetch('/analyze', {
-                method: 'POST',
-                body: formData
-            });
-
+            const response = await fetch('/analyze', { method: 'POST', body: formData });
             const data = await response.json();
+            
             loaderOverlay.style.display = 'none';
+            btnTakePic.style.display = 'flex';
+            btnGallery.style.display = 'flex';
+            analyzeBtn.style.display = 'none';
             analyzeBtn.disabled = false;
             
-            resultPanel.style.display = 'block';
-            if (response.ok && data.diagnosis && data.scenario_array && Array.isArray(data.scenario_array) && data.scenario_array.length > 0) {
-                resultPanel.classList.add('success');
-                resultPanel.innerHTML = `<i class="fas fa-check-circle" style="color: #10b981; margin-right: 8px;"></i> ${data.diagnosis}`;
-                scenarioArray = data.scenario_array;
-                console.log("Otrzymane scenario_array:", scenarioArray);
-                const welcomeSound = `I recognized a ${data.diagnosis === "Rozcięcie" ? "cut" : "burn"}. I will guide you through the first aid steps. When you finish a step, say "Next". If you have a question, say "More". To hear the step again, say "Repeat". Let's begin.`;
-                scenarioArray.unshift(welcomeSound);
-                readScenarioStepByStep();
+            if (response.ok && data.diagnosis) {
+                isProcessActive = true;
+                populateDiagnosisScreen(data.diagnosis);
+                switchScreen('diagnosisScreen', null, 2);
             } else {
+                resultPanel.style.display = 'block';
                 resultPanel.classList.add('error');
-                resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444; margin-right: 8px;"></i> ${data.error || "Nieznany błąd"}`;
+                resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${data.error || "Unknown error"}`;
             }
         } catch (error) {
             loaderOverlay.style.display = 'none';
+            btnTakePic.style.display = 'flex';
+            btnGallery.style.display = 'flex';
+            analyzeBtn.style.display = 'none';
             analyzeBtn.disabled = false;
+            
             resultPanel.style.display = 'block';
             resultPanel.classList.add('error');
-            resultPanel.innerHTML = `<i class="fas fa-wifi" style="color: #ef4444; margin-right: 8px;"></i> Błąd połączenia z serwerem.`;
+            resultPanel.innerHTML = `<i class="fas fa-wifi"></i> Server connection error.`;
         }
     }
 
-    async function getMoreInfo() {
-        try {
-            const response = await fetch('/more', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ prompt: messageHistory.map(msg => `${msg.sender === 'ai' ? 'AI' : 'User'}: ${msg.text}`).join('\n') })
-            });
-
-            if (!response.ok) {
-                throw new Error(`Błąd serwera: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const moreInfoText = data.text || "Brak dodatkowych informacji.";
-            addChatBubble(moreInfoText, "ai");
-            await getAudio(moreInfoText);
-
-        } catch (error) {
-            console.error("Błąd podczas pobierania dodatkowych informacji:", error);
-            addChatBubble("Nie udało się pobrać dodatkowych informacji.", "ai");
-        }
-    }
-
-    async function readScenarioStepByStep() {
-    if (!scenarioArray || scenarioArray.length === 0) {
-        console.log("Brak scenariuszy do odczytania.");
-        return;
-    }
-
-    if (currentScenarioIndex >= scenarioArray.length) {
-        console.log("Koniec procedury.");
-        currentScenarioIndex = 0;
-        addChatBubble("Procedura ratunkowa zakończona.", "ai");
-        return;
-    }
-
-    const currentStepText = scenarioArray[currentScenarioIndex];
-    console.log("Odczytywany krok:", currentStepText);
-    addChatBubble(currentStepText, "ai");
-
-    //pobranie dźwięku
-    await getAudio(currentStepText);
-}
-
-async function askGeminiQuestion(userQuestion) {
-    try {
-        //niewidzialny kontekst kroku do pytania użytkownika.
-        let questionForAI = userQuestion;
+    function populateDiagnosisScreen(diagnosisText) {
+        document.getElementById('diagImageResult').src = imagePreview.src;
+        document.getElementById('diagTitle').textContent = diagnosisText;
+        const titleLower = diagnosisText.toLowerCase();
+        const stepsList = document.getElementById('stepsList');
+        const badge = document.getElementById('diagSeverityBadge');
+        const subtitle = document.getElementById('diagSubtitle');
         
-        if (messageHistory.length === 0) {
-             const currentStep = scenarioArray[currentScenarioIndex] || "Brak kontekstu";
-             questionForAI = `Kontekst kroku: ${currentStep}. Moje pytanie to: ${userQuestion}`;
+        if (titleLower.includes('poparzenie') || titleLower.includes('burn')) {
+            badge.className = 'severity-badge moderate';
+            badge.innerHTML = '<i class="fas fa-exclamation-triangle"></i> MODERATE';
+            subtitle.textContent = 'Not life-threatening. Blistering might be present.';
+            stepsList.innerHTML = `
+                <li><i class="fas fa-check-circle" style="color:var(--success-color);"></i> <span>Cool under running water for 20 minutes.</span></li>
+                <li><i class="fas fa-check-circle" style="color:var(--success-color);"></i> <span>Remove tight clothing near the burnt area.</span></li>
+                <li><i class="fas fa-times-circle" style="color:var(--danger-color);"></i> <span>Do not pop blisters or apply ice.</span></li>`;
+        } else {
+            badge.className = 'severity-badge mild';
+            badge.innerHTML = '<i class="fas fa-exclamation-circle"></i> MILD TO MODERATE';
+            subtitle.textContent = 'Clean the area carefully to prevent infection.';
+            stepsList.innerHTML = `
+                <li><i class="fas fa-check-circle" style="color:var(--success-color);"></i> <span>Stop bleeding by applying direct pressure.</span></li>
+                <li><i class="fas fa-check-circle" style="color:var(--success-color);"></i> <span>Clean the wound with running water.</span></li>
+                <li><i class="fas fa-check-circle" style="color:var(--success-color);"></i> <span>Apply a sterile bandage or dressing.</span></li>`;
         }
-
-        //dodajemy zapytanie do historii
-        messageHistory.push({
-            role: "user",
-            parts: [questionForAI]
-        });
-
-        const response = await fetch('/more', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ history: messageHistory }) 
-        });
-
-        if (!response.ok) throw new Error("Błąd serwera");
-
-        const data = await response.json();
-        const answer = data.text || "Błąd odpowiedzi AI.";
-
-        //zapisujemy odpowiedź modelu do historii, żeby pamiętał co powiedział
-        messageHistory.push({
-            role: "model",
-            parts: [answer]
-        });
-
-        //dymek i dźwięk
-        addChatBubble(answer, "ai");
-        await getAudio(answer);
-
-    } catch (error) {
-        console.error("Błąd zapytania:", error);
-        const errText = "Wystąpił błąd komunikacji. Spróbuj zadać pytanie jeszcze raz lub powiedz next.";
-        addChatBubble(errText, "ai");
-        await getAudio(errText);
+        
+        isVoiceActive = false;
+        document.getElementById('btnVoiceAssistant').classList.remove('active');
+        document.getElementById('btnVoiceAssistant').innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+        document.getElementById('stepsCard').style.display = 'block';
+        document.getElementById('btnCollapsedSteps').style.display = 'none';
+        document.getElementById('transcriptionCard').style.display = 'none';
     }
-}
-    async function getAudio(promptText) {
-    try {      
-        const audioUrl = `get_audio?prompt=${encodeURIComponent(promptText)}`;
 
-        const audio = new Audio(audioUrl);
+    let isVoiceActive = false;
+    function toggleVoiceAssistant() {
+        if (isVoiceActive) {
+            if (!confirm("Are you sure you want to stop the Voice Assistant?")) return;
+        }
+        
+        isVoiceActive = !isVoiceActive;
+        const btnVoice = document.getElementById('btnVoiceAssistant');
+        const transcriptionCard = document.getElementById('transcriptionCard');
+        
+        if (isVoiceActive) {
+            btnVoice.classList.add('active');
+            btnVoice.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Voice Assistant';
+            transcriptionCard.style.display = 'block';
+        } else {
+            btnVoice.classList.remove('active');
+            btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+            transcriptionCard.style.display = 'none';
+        }
+    }
 
-        // Co ma się wydarzyć, gdy plik skończy grać?
-        audio.onended = () => {
-            console.log("Zakończono odtwarzanie kroku.");
+    function toggleCollapsedSteps() {
+        const stepsCard = document.getElementById('stepsCard');
+        const btnCollapsedSteps = document.getElementById('btnCollapsedSteps');
+        if (stepsCard.style.display === 'none') {
+            stepsCard.style.display = 'block';
+            btnCollapsedSteps.style.display = 'none';
+        } else {
+            stepsCard.style.display = 'none';
+            btnCollapsedSteps.style.display = 'flex';
+        }
+    }
+
+    function endProcess() {
+        if (confirm("Are you sure you want to close this case and end the process?")) {
+            isProcessActive = false;
+            isVoiceActive = false;
+            document.getElementById('btnVoiceAssistant').classList.remove('active');
+            document.getElementById('btnVoiceAssistant').innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+            imagePreview.style.display = 'none';
+            cameraUI.style.display = 'flex';
+            btnTakePic.style.display = 'flex';
+            btnGallery.style.display = 'flex';
+            analyzeBtn.style.display = 'none';
+            selectedFile = null;
             
-            startLocalVoiceCommand();
-        };
-
-        // Odtwarzamy dźwięk
-        audio.play();
-
-    } catch (error) {
-        console.error("Błąd podczas generowania audio:", error);
+            document.getElementById('cameraInput').value = "";
+            document.getElementById('galleryInput').value = "";
+            
+            switchScreen('homeScreen', null, 0);
+        }
     }
 
-
-    function startLocalVoiceCommand() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    function handleChatEnter(event) {
+        if (event.key === 'Enter') {
+            sendChatMessage();
+        }
+    }
     
-    if (!SpeechRecognition) {
-        resultPanel.innerHTML = `<i class="fas fa-exclamation-triangle" style="color: #ef4444;"></i> Twoja przeglądarka nie obsługuje funkcji rozpoznawania mowy.`;
-        return;
+    function sendChatMessage() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text) return;
+        
+        const chatMessages = document.getElementById('chatMessages');
+        const userMsg = document.createElement('div');
+        userMsg.className = 'msg user';
+        userMsg.textContent = text;
+        chatMessages.appendChild(userMsg);
+        
+        input.value = '';
+        chatMessages.scrollTop = chatMessages.scrollHeight;
+        
+        setTimeout(() => {
+            const aiMsg = document.createElement('div');
+            aiMsg.className = 'msg ai';
+            aiMsg.innerHTML = '<i class="fas fa-robot" style="color:var(--blue-card); margin-right:5px;"></i> This feature is not yet connected to the backend, but the interface is ready!';
+            chatMessages.appendChild(aiMsg);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }, 1000);
     }
-
-    const recognition = new SpeechRecognition();
-    recognition.lang = 'en-US'; 
-    recognition.continuous = false; 
-    recognition.interimResults = false; 
-
-    let commandAnalyze = false; 
-
-    // Zmieniamy komunikat w zależności od trybu
-    recognition.onstart = () => {
-        if (isChatMode) {
-            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #3b82f6; animation: pulse 1s infinite;"></i> Q&A mode (Ask a question or say "next")...`;
-        } else {
-            resultPanel.innerHTML = `<i class="fas fa-microphone" style="color: #ef4444; animation: pulse 1s infinite;"></i> I'm listening (say: "next", "repeat" or "more")...`;
-        }
-    };
-
-    recognition.onresult = async (event) => {
-        if (commandAnalyze) return; 
-        commandAnalyze = true; 
-        recognition.stop(); 
-
-        let transcript = event.results[0][0].transcript.toLowerCase();
-        transcript = transcript.replace(/[.,!?]/g, '').trim();
-
-        console.log("Przeglądarka usłyszała:", transcript);
-        resultPanel.innerHTML = `<i class="fas fa-spinner fa-spin"></i> Przetwarzam...`;
-        addChatBubble(transcript, "user"); 
-
-        //Q&A mode
-        if (isChatMode) {
-            if (transcript.includes("next")) {
-                // Użytkownik chce wyjść z pytań i przejść dalej
-                isChatMode = false; 
-                addChatBubble("Zamykam tryb pomocy.", "ai");
-                currentScenarioIndex++;
-                readScenarioStepByStep(); 
-            } else {
-                // Jeśli to nie jest "next", traktujemy to jako zadane pytanie do Gemini
-                askGeminiQuestion(transcript);
-            }
-            return;
-        }
-
-        //scenarios
-        if (transcript.includes("next")) {
-            currentScenarioIndex++;
-            readScenarioStepByStep();
-
-        } else if (transcript.includes("repeat")) {
-            readScenarioStepByStep(); 
-
-        } else if (transcript.includes("more")) {
-            // Włączamy tryb czatu
-            isChatMode = true; 
-            const infoText = "Help mode activated. Ask your question, or say next to continue.";
-            addChatBubble(infoText, "ai"); 
-            await getAudio(infoText);
-
-        } else if (transcript.includes("stop")) {
-            addChatBubble("Procedure stopped.", "ai"); 
-            currentScenarioIndex = scenarioArray.length;
-
-        } else {
-            const fallbackText = "I didn't understand. Please say next, repeat, or more.";
-            addChatBubble(fallbackText, "ai"); 
-            await getAudio(fallbackText);
-        }
-    };
-
-    recognition.onerror = async (event) => {
-        if (event.error === 'aborted') return;
-
-        console.error("Błąd rozpoznawania mowy:", event.error);
-        if (event.error === 'no-speech') {
-            const prompt = isChatMode ? "Waiting for your question, or say next." : "Please say next, repeat, or more.";
-            await getAudio(prompt);
-        } else {
-            resultPanel.innerHTML = `<i class="fas fa-microphone-slash"></i> Błąd mikrofonu: ${event.error}`;
-        }
-    };
-
-    recognition.start();
-}
-}
+    
+    // Inicjalizacja profilu
+    updateProfile();
 </script>
-
-
 </body>
 </html>
