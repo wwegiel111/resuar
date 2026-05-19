@@ -697,16 +697,24 @@ async def get_audio(request: Request, prompt: str):
 
     # Real TTS generation
     try:
-        audio_data_iterator = elevenlabs_client.text_to_speech.stream(
+        # ElevenLabs SDK v1.x uses .convert() instead of .stream()
+        audio_data_iterator = elevenlabs_client.text_to_speech.convert(
             text=prompt_text,
             voice_id="JBFqnCBsd6RMkjVDRZzb",
-            model_id="eleven_multilingual_v2"
+            model_id="eleven_multilingual_v2",
+            output_format="mp3_44100_128",
         )
 
         temp_file_path = file_path + ".tmp"
         with open(temp_file_path, "wb") as f:
             for chunk in audio_data_iterator:
-                f.write(chunk)
+                if chunk:
+                    f.write(chunk)
+
+        # Verify the file is non-empty before serving
+        if os.path.getsize(temp_file_path) == 0:
+            os.remove(temp_file_path)
+            raise RuntimeError("ElevenLabs returned empty audio")
 
         os.rename(temp_file_path, file_path)
         return FileResponse(file_path, media_type="audio/mpeg")
