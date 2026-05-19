@@ -1,9 +1,27 @@
+"""
+RescuAR Backend — AI-Powered First Aid Assistant
+=================================================
+Security & Infrastructure:
+  1. File validation on /analyze (MIME, extension, size)
+  2. Secure JSON credentials parsing from env vars
+  3. Rate limiting on AI endpoints (slowapi)
+
+Core Value Proposition:
+  4. Severity detection (mild / moderate / severe)
+  5. Expanded wound types (8 categories with severity-specific scenarios)
+  6. Fixed mock audio (returns real silent MP3 instead of JSON)
+"""
+
 import os
 import re
 import io
+import json
+import time
+import struct
 import tempfile
-from fastapi import FastAPI, UploadFile, File
-from fastapi.responses import HTMLResponse
+from collections import defaultdict
+from fastapi import FastAPI, UploadFile, File, Request, HTTPException
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
@@ -11,10 +29,25 @@ import PIL.Image
 from pydantic import BaseModel
 from typing import List, Dict
 
+# ============================================================================
+# [3] RATE LIMITING — using slowapi
+# ============================================================================
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    RATE_LIMIT_AVAILABLE = True
+except ImportError:
+    RATE_LIMIT_AVAILABLE = False
+    print("⚠️  slowapi not installed — rate limiting disabled")
+
 # Try to import Google and ElevenLabs, but allow graceful fallback
 try:
     import vertexai
-    from vertexai.generative_models import GenerativeModel, Part, GenerationConfig, HarmCategory, HarmBlockThreshold, Content
+    from vertexai.generative_models import (
+        GenerativeModel, Part, GenerationConfig,
+        HarmCategory, HarmBlockThreshold, Content
+    )
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -28,7 +61,24 @@ except ImportError:
     print("⚠️  ElevenLabs not available - using mock mode")
 
 
-app = FastAPI()
+# ============================================================================
+# APP INITIALIZATION
+# ============================================================================
+app = FastAPI(title="RescuAR API", version="2.0.0")
+
+# Rate limiter setup
+if RATE_LIMIT_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+else:
+    # No-op decorator when slowapi is not available
+    class FakeLimiter:
+        def limit(self, *args, **kwargs):
+            def decorator(func):
+                return func
+            return decorator
+    limiter = FakeLimiter()
 
 app.add_middleware(
     CORSMiddleware,
@@ -37,35 +87,73 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Mount static assets (CSS, JS) at /static
+# Mount static assets
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
 if os.path.isdir(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
-# --- LOGIKA AUTORYZACJI ---
+
+# ============================================================================
+# [1] FILE VALIDATION CONSTANTS
+# ============================================================================
+ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
+MAX_FILE_SIZE_MB = 10
+MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+
+
+# ============================================================================
+# [2] SECURE CREDENTIALS SETUP
+# ============================================================================
 def setup_vertex_ai():
+    """
+    Securely parses GOOGLE_CREDS_JSON env var (a JSON string),
+    validates its structure, writes to a temp file with restricted permissions,
+    and initializes Vertex AI.
+    """
     if not GOOGLE_AVAILABLE:
         print("✓ Running in MOCK MODE (Google Cloud AI)")
         return
-    
-    creds_json = os.getenv("GOOGLE_CREDS_JSON")
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar") 
-    location = "us-central1"
 
-    if creds_json:
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix=".json") as f:
-            f.write(creds_json)
-            temp_path = f.name
-        
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
-        vertexai.init(project=project_id, location=location)
-        print("✓ Vertex AI initialized successfully")
-    else:
+    creds_json_str = os.getenv("GOOGLE_CREDS_JSON")
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+
+    if not creds_json_str:
         print("⚠️  GOOGLE_CREDS_JSON not set - using mock mode")
+        return
+
+    # Validate JSON structure before writing to disk
+    try:
+        creds_data = json.loads(creds_json_str)
+        required_fields = ["type", "project_id", "private_key_id", "private_key"]
+        missing = [f for f in required_fields if f not in creds_data]
+        if missing:
+            print(f"⚠️  Credentials JSON missing fields: {missing} - using mock mode")
+            return
+    except json.JSONDecodeError as e:
+        print(f"⚠️  Invalid JSON in GOOGLE_CREDS_JSON: {e} - using mock mode")
+        return
+
+    # Write to temp file with restricted permissions (owner-only read)
+    fd, temp_path = tempfile.mkstemp(suffix=".json", prefix="gcp_creds_")
+    try:
+        os.fchmod(fd, 0o600)
+        with os.fdopen(fd, 'w') as f:
+            json.dump(creds_data, f)
+    except Exception as e:
+        os.close(fd)
+        print(f"⚠️  Failed to write credentials: {e}")
+        return
+
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
+    vertexai.init(project=project_id, location=location)
+    print(f"✓ Vertex AI initialized (project={project_id}, location={location})")
+
 
 setup_vertex_ai()
 
-# Initialize ElevenLabs if available
+# Initialize ElevenLabs
 elevenlabs_client = None
 if ELEVENLABS_AVAILABLE:
     api_key = os.getenv("ELEVENLABS_API_KEY")
@@ -75,66 +163,346 @@ if ELEVENLABS_AVAILABLE:
     else:
         print("⚠️  ELEVENLABS_API_KEY not set - using mock mode")
 
-# Konfiguracja modelu rozpoznawania obrazen
+
+# ============================================================================
+# [4] & [5] EXPANDED WOUND TYPES + SEVERITY DETECTION
+# ============================================================================
+
+# System instruction for the classification model — now returns TYPE|SEVERITY
+CLASSIFICATION_PROMPT = """You are a medical AI triage expert. Analyze the wound image and respond with EXACTLY two words separated by a pipe character:
+WOUND_TYPE|SEVERITY
+
+WOUND_TYPE must be one of: Burn, Cut, Bruise, Scrape, Puncture, Sprain, Fracture, Bite
+SEVERITY must be one of: Mild, Moderate, Severe
+
+Examples of correct responses:
+Burn|Moderate
+Cut|Mild
+Fracture|Severe
+
+Rules:
+- If the image is unclear, make your best assessment
+- Severe means: deep tissue damage, heavy bleeding, bone visible, large area affected, or requires immediate professional medical attention
+- Moderate means: notable injury requiring careful first aid, possible infection risk, may need medical follow-up
+- Mild means: superficial, small area, manageable with basic first aid at home
+"""
+
 if GOOGLE_AVAILABLE:
-    system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
-    model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+    model = GenerativeModel("gemini-2.5-flash", system_instruction=CLASSIFICATION_PROMPT)
 else:
     model = None
 
-#scenariusze
+# Comprehensive scenario dictionary: scenario_dict[wound_type][severity]
 scenario_dict = {
-    "Poparzenie": [
-        'Run cool water over the area of the burn or soak it in a cool water bath (not ice water). Keep the area under water for at least 5 to 30 minutes. A clean, cold, wet towel will help reduce pain.',
-        'Calm and reassure the person.',
-        'After flushing or soaking the burn, cover it with a dry, sterile bandage or clean dressing.',
-        'Protect the burn from pressure and friction.',
-        'Over-the-counter ibuprofen or acetaminophen can help relieve pain and swelling.',
-        'Do not give aspirin to children under 12.',
-        'Once the skin has cooled, moisturizing lotion containing aloe and an antibiotic also can help.'
-    ],
-    "Rozcięcie": [
-        'Wash your hands with soap or antibacterial cleanser to prevent infection.',
-        'Then, wash the cut thoroughly with mild soap and water.',
-        'Use direct pressure to stop the bleeding.',
-        'Apply antibacterial ointment and a clean bandage that will not stick to the wound.'
-    ]
+    "Burn": {
+        "Mild": [
+            "Run cool (not cold) water over the burn for 10-20 minutes.",
+            "Do not apply ice, butter, or toothpaste to the burn.",
+            "Apply aloe vera gel or a moisturizing lotion once cooled.",
+            "Cover loosely with a sterile non-stick bandage if needed.",
+            "Take over-the-counter pain relief like ibuprofen if needed.",
+        ],
+        "Moderate": [
+            "Run cool water over the area of the burn for at least 20 minutes. A clean, cold, wet towel will help reduce pain.",
+            "Calm and reassure the person.",
+            "After cooling, cover with a dry, sterile bandage or clean dressing.",
+            "Protect the burn from pressure and friction.",
+            "Over-the-counter ibuprofen or acetaminophen can help relieve pain and swelling.",
+            "Do not give aspirin to children under 12.",
+            "Do not pop any blisters — they protect against infection.",
+            "Seek medical attention if blisters are larger than 3 inches or on the face, hands, or joints.",
+        ],
+        "Severe": [
+            "CALL EMERGENCY SERVICES (112) IMMEDIATELY. This burn requires professional medical care.",
+            "Do NOT remove clothing stuck to the burn.",
+            "Do NOT immerse large severe burns in water — this can cause shock.",
+            "Cover the area loosely with a clean, cool, moist bandage or cloth.",
+            "Elevate the burned area above heart level if possible.",
+            "Watch for signs of shock: pale skin, weakness, rapid pulse.",
+            "Keep the person warm with a blanket over unburned areas.",
+            "Do not apply any ointments or creams to severe burns.",
+        ],
+    },
+    "Cut": {
+        "Mild": [
+            "Wash your hands with soap before treating the wound.",
+            "Rinse the cut under clean running water for 1-2 minutes.",
+            "Apply gentle pressure with a clean cloth if there is minor bleeding.",
+            "Apply a thin layer of antibiotic ointment.",
+            "Cover with an adhesive bandage or sterile gauze.",
+        ],
+        "Moderate": [
+            "Wash your hands thoroughly with soap or antibacterial cleanser.",
+            "Apply firm, direct pressure with a clean cloth for 10-15 minutes to stop bleeding.",
+            "Once bleeding stops, wash the cut thoroughly with mild soap and water.",
+            "Remove any visible debris gently with clean tweezers.",
+            "Apply antibiotic ointment and cover with a sterile bandage.",
+            "Change the bandage daily and watch for signs of infection (redness, swelling, warmth).",
+            "Consider a tetanus shot if you haven't had one in 5 years.",
+        ],
+        "Severe": [
+            "CALL EMERGENCY SERVICES (112) IMMEDIATELY for deep cuts with heavy bleeding.",
+            "Apply firm, constant pressure with a clean cloth. Do NOT remove it even if blood soaks through — add more layers.",
+            "If possible, elevate the injured area above the heart.",
+            "If bleeding won't stop after 15 minutes of direct pressure, this is a medical emergency.",
+            "Do NOT try to clean a severely bleeding wound.",
+            "Keep the person calm and lying down to prevent shock.",
+            "If an object is embedded in the wound, do NOT remove it.",
+        ],
+    },
+    "Bruise": {
+        "Mild": [
+            "Apply a cold compress or ice pack wrapped in a cloth for 10-15 minutes.",
+            "Rest the bruised area and avoid further impact.",
+            "After 48 hours, you can apply warm compresses to help healing.",
+            "Over-the-counter pain relief can help if needed.",
+        ],
+        "Moderate": [
+            "Apply ice wrapped in a cloth for 15-20 minutes, several times a day for the first 48 hours.",
+            "Elevate the bruised area above heart level when possible.",
+            "Rest the area and avoid activities that could worsen it.",
+            "Take ibuprofen for pain and swelling (avoid aspirin as it can increase bleeding).",
+            "After 48 hours, switch to warm compresses to promote blood flow and healing.",
+            "See a doctor if the bruise doesn't improve after 2 weeks.",
+        ],
+        "Severe": [
+            "Seek medical attention — severe bruising may indicate internal bleeding or fracture.",
+            "Apply ice wrapped in cloth for 20 minutes at a time.",
+            "Do NOT massage the bruised area.",
+            "Watch for signs of compartment syndrome: increasing pain, numbness, or swelling.",
+            "If the bruise is on the head or abdomen, seek immediate medical evaluation.",
+            "Keep the area elevated and immobilized.",
+        ],
+    },
+    "Scrape": {
+        "Mild": [
+            "Rinse the scrape gently under clean running water.",
+            "Pat dry with a clean cloth.",
+            "Apply a thin layer of antibiotic ointment.",
+            "Cover with a bandage if the area might get dirty.",
+        ],
+        "Moderate": [
+            "Wash the scraped area thoroughly with mild soap and clean water for 2-3 minutes.",
+            "Remove any dirt or debris gently — use clean tweezers if needed.",
+            "Apply antibiotic ointment to prevent infection.",
+            "Cover with a non-stick sterile bandage.",
+            "Change the bandage daily and keep the wound moist for faster healing.",
+            "Watch for signs of infection: increasing redness, warmth, swelling, or pus.",
+        ],
+        "Severe": [
+            "For large or deep scrapes (road rash), seek medical attention.",
+            "Rinse with clean water but do not scrub aggressively.",
+            "Cover with a clean, moist dressing.",
+            "Deep scrapes may need professional cleaning to prevent infection.",
+            "A tetanus booster may be needed if not current.",
+            "Watch for signs of infection over the next few days.",
+        ],
+    },
+    "Puncture": {
+        "Mild": [
+            "Let the wound bleed slightly to help flush out bacteria.",
+            "Wash the area with soap and clean water.",
+            "Apply antibiotic ointment and cover with a bandage.",
+            "Monitor for signs of infection over the next few days.",
+            "Check if your tetanus vaccination is up to date.",
+        ],
+        "Moderate": [
+            "Allow minor bleeding to help clean the wound naturally.",
+            "Wash thoroughly with soap and water for several minutes.",
+            "Do NOT try to close a puncture wound — it needs to drain.",
+            "Apply antibiotic ointment and a loose bandage.",
+            "Seek medical attention for a tetanus booster if needed.",
+            "Watch closely for infection: redness spreading, fever, red streaks from wound.",
+        ],
+        "Severe": [
+            "CALL EMERGENCY SERVICES (112) for deep puncture wounds.",
+            "Do NOT remove any object still embedded in the wound.",
+            "Apply pressure around (not on) the object to control bleeding.",
+            "Stabilize any embedded object with bulky dressings.",
+            "Keep the person still and calm.",
+            "Deep punctures to chest, abdomen, or neck are life-threatening emergencies.",
+        ],
+    },
+    "Sprain": {
+        "Mild": [
+            "Follow R.I.C.E.: Rest, Ice, Compression, Elevation.",
+            "Apply ice for 15-20 minutes every 2-3 hours for the first 48 hours.",
+            "Use an elastic bandage for gentle compression.",
+            "Rest the joint and avoid putting weight on it.",
+            "Over-the-counter anti-inflammatory medication can help.",
+        ],
+        "Moderate": [
+            "Apply ice immediately — 20 minutes on, 20 minutes off, for the first 48-72 hours.",
+            "Use a compression bandage to reduce swelling (not too tight).",
+            "Elevate the injured limb above heart level as much as possible.",
+            "Avoid bearing weight — use crutches if it's an ankle or knee.",
+            "Take anti-inflammatory medication (ibuprofen) as directed.",
+            "See a doctor if you cannot bear weight at all or if swelling is severe.",
+            "After 48 hours, gentle range-of-motion exercises can begin.",
+        ],
+        "Severe": [
+            "Seek immediate medical attention — severe sprains may involve torn ligaments.",
+            "Immobilize the joint in the position found. Do not try to straighten it.",
+            "Apply ice wrapped in cloth to reduce swelling.",
+            "Do NOT bear any weight on the injured area.",
+            "Elevate above heart level.",
+            "A severe sprain can be as serious as a fracture — imaging may be needed.",
+        ],
+    },
+    "Fracture": {
+        "Mild": [
+            "If you suspect a hairline fracture, immobilize the area.",
+            "Apply ice wrapped in cloth for 15-20 minutes.",
+            "Do not put weight on the suspected fracture.",
+            "See a doctor for X-ray confirmation — even mild fractures need proper treatment.",
+            "Use a splint or sling to keep the area still during transport.",
+        ],
+        "Moderate": [
+            "CALL FOR MEDICAL HELP. Fractures require professional treatment.",
+            "Do NOT try to realign the bone or push it back in.",
+            "Immobilize the area above and below the suspected break.",
+            "Apply ice packs wrapped in cloth to reduce swelling.",
+            "If there is an open wound near the fracture, cover it with a clean dressing.",
+            "Monitor circulation below the injury (check for numbness, cold, or blue color).",
+            "Keep the person still and comfortable until help arrives.",
+        ],
+        "Severe": [
+            "CALL EMERGENCY SERVICES (112) IMMEDIATELY.",
+            "Do NOT move the person unless they are in immediate danger.",
+            "Do NOT try to straighten or realign the limb.",
+            "Control any bleeding with gentle pressure around (not on) the fracture site.",
+            "Cover any open fracture wounds with a sterile dressing.",
+            "Immobilize the area — splint it in the position found using rigid materials.",
+            "Watch for shock: pale skin, rapid breathing, confusion.",
+            "Keep the person warm and calm until emergency services arrive.",
+        ],
+    },
+    "Bite": {
+        "Mild": [
+            "Wash the bite area thoroughly with soap and water for 5 minutes.",
+            "Apply antibiotic ointment.",
+            "Cover with a clean bandage.",
+            "Monitor for signs of infection over the next few days.",
+            "Note what animal caused the bite for medical records.",
+        ],
+        "Moderate": [
+            "Wash the wound thoroughly with soap and running water for at least 5 minutes.",
+            "Apply firm pressure with a clean cloth if bleeding.",
+            "Apply antibiotic ointment and cover with a sterile bandage.",
+            "Seek medical attention — you may need antibiotics or a tetanus booster.",
+            "If it was an animal bite, try to identify the animal (for rabies assessment).",
+            "Watch for infection signs: increasing pain, redness, swelling, fever.",
+        ],
+        "Severe": [
+            "CALL EMERGENCY SERVICES (112) for severe bites with heavy bleeding.",
+            "Apply firm pressure to control bleeding.",
+            "Do NOT try to close the wound — bite wounds are highly prone to infection.",
+            "If a body part has been bitten off, wrap it in clean moist cloth and bring it to the hospital.",
+            "All animal bites that break the skin should be evaluated for rabies risk.",
+            "Human bites that break the skin also require medical attention due to infection risk.",
+        ],
+    },
 }
 
-#model rozwiniecia rozmowy
+# Flat lookup for backward compatibility: returns first matching severity scenario
+def get_scenario_for_diagnosis(wound_type: str, severity: str) -> List[str]:
+    """Get scenario steps for a given wound type and severity."""
+    type_scenarios = scenario_dict.get(wound_type, {})
+    if isinstance(type_scenarios, dict):
+        return type_scenarios.get(severity, type_scenarios.get("Moderate", []))
+    # Backward compat: if it's a flat list
+    return type_scenarios if isinstance(type_scenarios, list) else []
+
+
+# Chat model
 if GOOGLE_AVAILABLE:
-    system_instruction_model_more_info = "You are an AI emergency medical expert. Analyze the conversation history and clarify the user's query regarding the current first-aid step. Provide a calm, actionable response limited to a maximum of 3 short sentences."
-    modelMoreInfo = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction_model_more_info)
+    system_instruction_model_more_info = (
+        "You are an AI emergency medical expert. Analyze the conversation history "
+        "and clarify the user's query regarding the current first-aid step. "
+        "Provide a calm, actionable response limited to a maximum of 3 short sentences."
+    )
+    modelMoreInfo = GenerativeModel(
+        "gemini-2.5-flash",
+        system_instruction=system_instruction_model_more_info
+    )
 else:
     modelMoreInfo = None
 
+
+# ============================================================================
+# ROUTES
+# ============================================================================
+
 class AudioRequest(BaseModel):
     prompt: str
+
+class ChatRequest(BaseModel):
+    history: List[Dict]
+
 
 @app.get("/", response_class=HTMLResponse)
 def home():
     try:
         with open("index.html", "r", encoding="utf-8") as f:
-            html_content = f.read()
-        return html_content
+            return f.read()
     except FileNotFoundError:
-        return "BŁĄD: Nie znaleziono pliku index.html na GitHubie."
+        raise HTTPException(status_code=500, detail="index.html not found")
 
-# --- ANALIZA ZDJĘCIA ---
+
+# ---------------------------------------------------------------------------
+# [1] FILE VALIDATION + [4][5] SEVERITY DETECTION + EXPANDED WOUND TYPES
+# ---------------------------------------------------------------------------
 @app.post("/analyze")
-async def analyze(file: UploadFile = File(...)):
+@limiter.limit("10/minute")
+async def analyze(request: Request, file: UploadFile = File(...)):
+    # --- File validation ---
+    # Check MIME type
+    if file.content_type not in ALLOWED_MIME_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type: {file.content_type}. Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
+        )
+
+    # Check extension
+    filename = file.filename or ""
+    ext = os.path.splitext(filename)[1].lower()
+    if ext and ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file extension: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+        )
+
+    # Read and check size
     contents = await file.read()
-    img = PIL.Image.open(io.BytesIO(contents))
-    
-    # Mock response for demo
+    if len(contents) > MAX_FILE_SIZE_BYTES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File too large: {len(contents) / 1024 / 1024:.1f}MB. Maximum: {MAX_FILE_SIZE_MB}MB"
+        )
+
+    if len(contents) == 0:
+        raise HTTPException(status_code=400, detail="Empty file uploaded")
+
+    # Validate it's actually an image
+    try:
+        img = PIL.Image.open(io.BytesIO(contents))
+        img.verify()  # Verify it's a valid image
+        img = PIL.Image.open(io.BytesIO(contents))  # Re-open after verify
+    except Exception:
+        raise HTTPException(status_code=400, detail="File is not a valid image")
+
+    # --- Mock response for demo ---
     if not GOOGLE_AVAILABLE or model is None:
+        wound_type = "Burn"
+        severity = "Moderate"
         return {
-            "diagnosis": "Poparzenie",
-            "scenario_array": scenario_dict.get("Poparzenie", []),
+            "diagnosis": wound_type,
+            "severity": severity,
+            "scenario_array": get_scenario_for_diagnosis(wound_type, severity),
             "mock": True,
-            "message": "Running in mock mode - using demo diagnosis"
         }
-    
+
+    # --- AI Classification ---
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='JPEG')
     image_part = Part.from_data(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
@@ -148,28 +516,74 @@ async def analyze(file: UploadFile = File(...)):
 
     try:
         response = model.generate_content(
-            [image_part, "Skategoryzuj tę ranę."],
-            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
+            [image_part, "Classify this wound. Respond with TYPE|SEVERITY only."],
+            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=50),
             safety_settings=safety_settings
         )
-        return {"diagnosis": response.text.strip(), "scenario_array": scenario_dict.get(response.text.strip(), [])}
+
+        raw_response = response.text.strip()
+        print(f"[AI] Raw classification: {raw_response}")
+
+        # Parse TYPE|SEVERITY response
+        wound_type, severity = parse_classification(raw_response)
+
+        scenario = get_scenario_for_diagnosis(wound_type, severity)
+
+        return {
+            "diagnosis": wound_type,
+            "severity": severity,
+            "scenario_array": scenario,
+        }
     except Exception as e:
-        return {"error": str(e)}
+        print(f"[ERROR] Analysis failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
-class ChatRequest(BaseModel):
-    history: List[Dict]
+def parse_classification(raw: str) -> tuple:
+    """Parse AI response like 'Burn|Moderate' into (wound_type, severity)."""
+    valid_types = set(scenario_dict.keys())
+    valid_severities = {"Mild", "Moderate", "Severe"}
+
+    # Try pipe-separated format
+    if "|" in raw:
+        parts = [p.strip().capitalize() for p in raw.split("|")]
+        if len(parts) >= 2:
+            wtype = parts[0]
+            sev = parts[1]
+            if wtype in valid_types and sev in valid_severities:
+                return wtype, sev
+
+    # Fallback: try to find known words in the response
+    raw_lower = raw.lower()
+    found_type = "Cut"  # default
+    found_severity = "Moderate"  # default
+
+    for t in valid_types:
+        if t.lower() in raw_lower:
+            found_type = t
+            break
+
+    for s in valid_severities:
+        if s.lower() in raw_lower:
+            found_severity = s
+            break
+
+    return found_type, found_severity
+
+
+# ---------------------------------------------------------------------------
+# [3] RATE LIMITED CHAT ENDPOINT
+# ---------------------------------------------------------------------------
 @app.post("/more")
-async def more(request: ChatRequest):
-    print("\n--- START ZAPYTANIA /more ---")
-    
+@limiter.limit("20/minute")
+async def more(request: Request, chat_request: ChatRequest):
     # Mock response for demo
     if not GOOGLE_AVAILABLE or modelMoreInfo is None:
         return {
-            "text": "This is a demo response. To get real AI responses, please configure your Google Cloud and ElevenLabs API keys.",
-            "mock": True
+            "text": "This is a demo response. To get real AI responses, please configure your Google Cloud API keys.",
+            "mock": True,
         }
-    
+
     safety_settings = {
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -178,42 +592,66 @@ async def more(request: ChatRequest):
     }
 
     try:
-        full_history = request.history
-        print(f"[LOG] Otrzymano historię z frontendu. Liczba wiadomości: {len(full_history)}")
-        
-        user_message = full_history[-1]["parts"][0] 
-        previous_history_raw = full_history[:-1]
+        full_history = chat_request.history
+        if not full_history:
+            raise HTTPException(status_code=400, detail="Empty history")
 
-        print(f"[LOG] Nowe pytanie od użytkownika: '{user_message}'")
+        user_message = full_history[-1]["parts"][0]
+        previous_history_raw = full_history[:-1]
 
         formatted_history = []
         for msg in previous_history_raw:
-            role = msg["role"]
-            text_part = msg["parts"][0]
+            role = msg.get("role", "user")
+            text_part = msg.get("parts", [""])[0]
             formatted_history.append(
                 Content(role=role, parts=[Part.from_text(text_part)])
             )
-            print(f"[LOG] Załadowano do pamięci AI -> Kto: {role} | Tekst: {text_part[:50]}...")
 
-        print("[LOG] Inicjalizowanie czatu w chat_model...")
         chat = modelMoreInfo.start_chat(history=formatted_history)
-        
-        print("[LOG] Wysyłanie wiadomości do Gemini...")
         response = chat.send_message(
             user_message,
             generation_config=GenerationConfig(temperature=0.3, max_output_tokens=1000),
-            safety_settings=safety_settings 
+            safety_settings=safety_settings
         )
-        
-        odpowiedz = response.text.strip()
-        print(f"[LOG] Otrzymano odpowiedź od Gemini: '{odpowiedz}'")
-        print("--- KONIEC ZAPYTANIA /more ---\n")
-        
-        return {"text": odpowiedz}
-        
+
+        return {"text": response.text.strip()}
+
+    except HTTPException:
+        raise
     except Exception as e:
-        print(f"\n[BŁĄD KRYTYCZNY w /more]: {str(e)}\n")
-        return {"error": str(e)}
+        print(f"[ERROR /more]: {str(e)}")
+        raise HTTPException(status_code=500, detail="AI processing failed")
+
+
+# ---------------------------------------------------------------------------
+# [6] FIXED MOCK AUDIO — returns a real silent MP3 file instead of JSON
+# ---------------------------------------------------------------------------
+def generate_silent_mp3(duration_ms: int = 500) -> bytes:
+    """
+    Generate a minimal valid MP3 file containing silence.
+    Uses a single MPEG Audio frame with zero audio data.
+    This ensures new Audio(url) works correctly in the browser.
+    """
+    # Minimal valid MP3: MPEG1 Layer3, 128kbps, 44100Hz, stereo
+    # Frame header: 0xFFFB9004 = sync(11) + version(2) + layer(2) + no CRC(1) +
+    #               bitrate(4)=128k + samplerate(2)=44100 + padding(1)=0 + private(1)=0 +
+    #               channel(2)=stereo + ...
+    frame_header = b'\xff\xfb\x90\x04'
+    # Frame size for 128kbps, 44100Hz = 417 bytes (including header)
+    frame_size = 417
+    padding = b'\x00' * (frame_size - len(frame_header))
+    single_frame = frame_header + padding
+
+    # Calculate how many frames we need for the desired duration
+    # Each frame at 44100Hz = 1152 samples = ~26.12ms
+    frames_needed = max(1, int(duration_ms / 26.12))
+
+    return single_frame * frames_needed
+
+
+# Pre-generate the silent MP3 bytes once at startup
+SILENT_MP3 = generate_silent_mp3(800)  # 800ms of silence
+
 
 def get_safe_filename(text: str) -> str:
     pl_chars = "pąćęłńóśźż"
@@ -221,65 +659,63 @@ def get_safe_filename(text: str) -> str:
     text = text.lower()
     for p, e in zip(pl_chars, en_chars):
         text = text.replace(p, e)
-    
     text = re.sub(r'[^a-z0-9\s]', '', text)
     filename = text.replace(" ", "_")[:50]
     return f"{filename}.mp3"
 
-# Upewnienie się, że katalog istnieje
+
 RECORDINGS_DIR = "recordings"
 if not os.path.exists(RECORDINGS_DIR):
     os.makedirs(RECORDINGS_DIR)
 
 
 @app.get("/get_audio")
-async def get_audio(prompt: str):
+@limiter.limit("30/minute")
+async def get_audio(request: Request, prompt: str):
     prompt_text = prompt.strip()
+    if not prompt_text:
+        raise HTTPException(status_code=400, detail="Empty prompt")
+
     filename = get_safe_filename(prompt_text)
     file_path = os.path.join(RECORDINGS_DIR, filename)
 
+    # Serve from cache
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
-        print(f"[CACHE] Wysyłam gotowy plik: {filename}")
         return FileResponse(file_path, media_type="audio/mpeg")
 
-    # Mock response for demo
+    # [6] Mock mode: return a real silent MP3 (not JSON!)
     if not ELEVENLABS_AVAILABLE or elevenlabs_client is None:
-        print(f"[MOCK] Generating mock audio for: {filename}")
-        # Create a simple silent MP3 file for demo
-        import wave
-        temp_wav = file_path.replace('.mp3', '.wav')
-        with wave.open(temp_wav, 'w') as wav_file:
-            wav_file.setnchannels(1)
-            wav_file.setsampwidth(2)
-            wav_file.setframerate(44100)
-            wav_file.writeframes(b'\x00' * 44100)  # 1 second of silence
-        
-        # For demo, just return a message
-        return {"message": "Mock audio mode - ElevenLabs not configured", "mock": True}
+        return Response(
+            content=SILENT_MP3,
+            media_type="audio/mpeg",
+            headers={"X-Mock-Audio": "true"}
+        )
 
-    print(f"[API] Generuję nowy plik dla Apple: {filename}")
+    # Real TTS generation
     try:
         audio_data_iterator = elevenlabs_client.text_to_speech.stream(
             text=prompt_text,
             voice_id="JBFqnCBsd6RMkjVDRZzb",
             model_id="eleven_multilingual_v2"
         )
-        
+
         temp_file_path = file_path + ".tmp"
         with open(temp_file_path, "wb") as f:
             for chunk in audio_data_iterator:
                 f.write(chunk)
-        
-        os.rename(temp_file_path, file_path)
 
-        print(f"[SUCCESS] Plik gotowy i zapisany: {file_path}")
+        os.rename(temp_file_path, file_path)
         return FileResponse(file_path, media_type="audio/mpeg")
 
     except Exception as e:
-        print(f"[ERROR]: {e}")
-        return {"error": str(e)}
-    
+        print(f"[ERROR TTS]: {e}")
+        # Fallback to silent MP3 on error — don't break the voice assistant
+        return Response(content=SILENT_MP3, media_type="audio/mpeg")
 
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8000))
