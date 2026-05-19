@@ -1,28 +1,23 @@
 /**
- * Profile & theme management.
+ * Theme management — dark mode toggle.
  */
-import { $, $$ } from './dom.js';
+import { $ } from './dom.js';
 
-export function updateProfile() {
-    const firstName = $('profileFirstName').value.trim();
-    const lastName = $('profileLastName').value.trim();
-
-    $('greetingText').textContent = firstName ? `Hello, ${firstName}` : 'Hello';
-    $('profileFullName').textContent = (firstName || lastName)
-        ? `${firstName} ${lastName}`.trim()
-        : 'User';
-
-    const initials =
-        (firstName ? firstName.charAt(0).toUpperCase() : '') +
-        (lastName ? lastName.charAt(0).toUpperCase() : '');
-
-    $$('.user-avatar').forEach(avatar => (avatar.textContent = initials || '?'));
-}
+let isDarkMode = false;
 
 export function toggleTheme() {
-    document.body.classList.toggle('dark-mode', $('themeToggle').checked);
+    isDarkMode = !isDarkMode;
+    document.body.classList.toggle('dark-mode', isDarkMode);
+
+    const icon = $('themeIcon');
+    if (icon) {
+        icon.className = isDarkMode ? 'fas fa-sun' : 'fas fa-moon';
+    }
 }
 
-// Expose to global scope for inline handlers
-window.updateProfile = updateProfile;
+// No longer needed but kept as no-op for safety
+export function updateProfile() {}
+
+// Expose to global scope
 window.toggleTheme = toggleTheme;
+window.updateProfile = updateProfile;

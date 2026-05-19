@@ -37,9 +37,6 @@
         <a class="nav-item" onclick="switchScreen('emergencyScreen', this, 3)">
             <i class="fas fa-phone-alt" style="color: #EF4444;"></i><span style="color: #EF4444; font-weight:600;">SOS</span>
         </a>
-        <a class="nav-item" onclick="switchScreen('profileScreen', this, 4)">
-            <i class="fas fa-user"></i><span>Profile</span>
-        </a>
     </nav>
 
     <!-- Screen wrapper -->
@@ -52,10 +49,11 @@
                     <div class="logo-icon"><i class="fas fa-heart"></i></div>
                     RescuAR
                 </div>
-                <div class="avatar user-avatar">AM</div>
+                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Toggle dark mode">
+                    <i class="fas fa-moon" id="themeIcon"></i>
+                </button>
             </div>
             <div style="max-width: 800px; width: 100%;">
-                <p class="greeting" id="greetingText">Hello</p>
                 <h1>How can we help you today?</h1>
                 <div class="card-main" onclick="goToScan(null, 2)">
                     <div class="texts">
@@ -244,41 +242,6 @@
                     <div class="e-info"><h3>997</h3><p>Police</p></div>
                     <div class="e-action"><i class="fas fa-phone"></i></div>
                 </a>
-            </div>
-        </div>
-
-        <!-- PROFILE -->
-        <div id="profileScreen" class="screen">
-            <div class="header" style="position: relative;">
-                <button class="back-btn" onclick="switchScreen('homeScreen', null, 0)">
-                    <i class="fas fa-arrow-left"></i>
-                </button>
-                <span class="screen-title mobile-header-logo">User Profile</span>
-            </div>
-            <h2 class="screen-title desktop-title">User Profile</h2>
-            <div class="profile-container">
-                <div class="avatar user-avatar" style="width:100px; height:100px; font-size:2.5rem; margin:0 auto 10px;">AM</div>
-                <h3 id="profileFullName" style="font-size:1.5rem; margin-bottom:5px;"> </h3>
-                <div class="profile-form">
-                    <div class="form-group">
-                        <label>First Name</label>
-                        <input type="text" id="profileFirstName" value=" " oninput="updateProfile()">
-                    </div>
-                    <div class="form-group">
-                        <label>Last Name</label>
-                        <input type="text" id="profileLastName" value=" " oninput="updateProfile()">
-                    </div>
-                    <div class="setting-row">
-                        <div class="setting-info">
-                            <h4>Dark Mode</h4>
-                            <p>Switch to dark theme</p>
-                        </div>
-                        <label class="switch">
-                            <input type="checkbox" id="themeToggle" onchange="toggleTheme()">
-                            <span class="slider"></span>
-                        </label>
-                    </div>
-                </div>
             </div>
         </div>
 
