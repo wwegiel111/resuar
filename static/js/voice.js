@@ -71,59 +71,56 @@ function readScenarioStepByStep() {
 /**
  * Plays TTS audio for a given text. After playback ends, starts voice recognition.
  * Uses fire-and-forget pattern (no await) to preserve user-activation context.
- * In mock mode (silent audio), simulates reading time based on text length.
  */
 function playStepAudio(promptText) {
     if (!state.isVoiceActive) return;
 
-    const url = getAudioUrl(promptText);
+    const audio = new Audio(getAudioUrl(promptText));
+    state.currentAudio = audio;
 
-    // First, do a fetch to check if it's mock audio
-    fetch(url).then(response => {
-        if (!state.isVoiceActive) return;
-
-        const isMock = response.headers.get('X-Mock-Audio') === 'true';
-
-        if (isMock) {
-            // Mock mode: simulate reading time (roughly 80ms per word)
-            const words = promptText.split(/\s+/).length;
-            const readingTime = Math.max(2000, words * 80);
-            console.log(`[Voice] Mock mode — simulating ${readingTime}ms reading time`);
-            setTimeout(() => {
-                if (state.isVoiceActive) startLocalVoiceCommand();
-            }, readingTime);
-            return;
+    // Fallback timer — if audio doesn't start within 8s, skip to recognition
+    // This handles cases where the server is slow or audio fails silently
+    const fallbackTimer = setTimeout(() => {
+        console.warn('[Voice] Audio timeout — skipping to recognition');
+        if (state.currentAudio === audio) {
+            audio.pause();
+            state.currentAudio = null;
+            if (state.isVoiceActive) startLocalVoiceCommand();
         }
+    }, 8000);
 
-        // Real audio: create Audio element from the blob
-        response.blob().then(blob => {
-            if (!state.isVoiceActive) return;
-            const audioUrl = URL.createObjectURL(blob);
-            const audio = new Audio(audioUrl);
-            state.currentAudio = audio;
+    audio.oncanplaythrough = () => {
+        // Audio is ready — clear the fallback timer, let it play naturally
+        clearTimeout(fallbackTimer);
+    };
 
-            audio.onended = () => {
-                URL.revokeObjectURL(audioUrl);
-                state.currentAudio = null;
-                if (state.isVoiceActive) startLocalVoiceCommand();
-            };
-
-            audio.onerror = () => {
-                URL.revokeObjectURL(audioUrl);
-                state.currentAudio = null;
-                if (state.isVoiceActive) startLocalVoiceCommand();
-            };
-
-            audio.play().catch((err) => {
-                console.warn('[Voice] audio.play() rejected:', err.message);
-                URL.revokeObjectURL(audioUrl);
-                state.currentAudio = null;
-                if (state.isVoiceActive) startLocalVoiceCommand();
-            });
-        });
-    }).catch(err => {
-        console.error('[Voice] Fetch audio error:', err);
+    audio.onended = () => {
+        clearTimeout(fallbackTimer);
+        state.currentAudio = null;
         if (state.isVoiceActive) startLocalVoiceCommand();
+    };
+
+    audio.onerror = (e) => {
+        clearTimeout(fallbackTimer);
+        console.warn('[Voice] Audio error:', e);
+        state.currentAudio = null;
+        // Simulate reading time before listening (for mock/silent audio)
+        const words = promptText.split(/\s+/).length;
+        const delay = Math.max(1500, words * 80);
+        setTimeout(() => {
+            if (state.isVoiceActive) startLocalVoiceCommand();
+        }, delay);
+    };
+
+    audio.play().catch((err) => {
+        clearTimeout(fallbackTimer);
+        console.warn('[Voice] audio.play() rejected:', err.message);
+        state.currentAudio = null;
+        const words = promptText.split(/\s+/).length;
+        const delay = Math.max(1500, words * 80);
+        setTimeout(() => {
+            if (state.isVoiceActive) startLocalVoiceCommand();
+        }, delay);
     });
 }
 
