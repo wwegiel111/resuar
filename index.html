@@ -37,6 +37,9 @@
         <a class="nav-item" onclick="switchScreen('emergencyScreen', this, 3)">
             <i class="fas fa-phone-alt" style="color: #EF4444;"></i><span style="color: #EF4444; font-weight:600;">SOS</span>
         </a>
+        <a class="nav-item" onclick="toggleTheme()">
+            <i class="fas fa-moon" id="themeIcon"></i><span>Theme</span>
+        </a>
     </nav>
 
     <!-- Screen wrapper -->
@@ -49,33 +52,37 @@
                     <div class="logo-icon"><i class="fas fa-heart"></i></div>
                     RescuAR
                 </div>
-                <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" aria-label="Toggle dark mode">
-                    <i class="fas fa-moon" id="themeIcon"></i>
-                </button>
             </div>
             <div style="max-width: 800px; width: 100%;">
                 <h1>How can we help you today?</h1>
                 <div class="card-main" onclick="goToScan(null, 2)">
-                    <div class="texts">
-                        <p style="font-size:0.8rem; letter-spacing:1px; margin-bottom:8px; text-transform:uppercase; font-weight:700; opacity:0.9;">AI Camera</p>
+                    <div class="card-sm-icon"><i class="fas fa-camera"></i></div>
+                    <div class="card-main-text">
+                        <p style="font-size:0.7rem; letter-spacing:1px; margin-bottom:4px; text-transform:uppercase; font-weight:700; opacity:0.9;">AI Camera</p>
                         <h3>Scan injury</h3>
                         <p>Instant wound diagnosis from a photo</p>
                     </div>
-                    <div class="icon-box"><i class="fas fa-camera"></i></div>
                 </div>
                 <div class="grid-cards">
                     <div class="card-sm card-red" onclick="switchScreen('cprScreen', null, -1)">
-                        <div class="icon-box"><i class="fas fa-heartbeat"></i></div>
+                        <div class="card-sm-icon"><i class="fas fa-heartbeat"></i></div>
                         <div>
                             <h4>Emergency CPR</h4>
                             <p>First aid audio-visual guide</p>
                         </div>
                     </div>
                     <div class="card-sm card-white" onclick="switchScreen('chatScreen', null, 1)">
-                        <div class="icon-box"><i class="far fa-comment-dots"></i></div>
+                        <div class="card-sm-icon"><i class="far fa-comment-dots"></i></div>
                         <div>
                             <h4>Ask AI</h4>
                             <p>Live medical chat</p>
+                        </div>
+                    </div>
+                    <div class="card-sm card-white" onclick="switchScreen('emergencyScreen', null, 3)">
+                        <div class="card-sm-icon card-sm-icon-sos"><i class="fas fa-phone-alt"></i></div>
+                        <div>
+                            <h4>Emergency SOS</h4>
+                            <p>Call emergency services</p>
                         </div>
                     </div>
                 </div>
