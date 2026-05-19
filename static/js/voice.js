@@ -1,5 +1,10 @@
 /**
  * Voice Assistant module — TTS playback + Web Speech API recognition.
+ * 
+ * Key design: audio.play() is called WITHOUT await to preserve the user-activation
+ * context from SpeechRecognition's onresult callback. Using await would cause the
+ * browser to lose the "user gesture" context, blocking subsequent audio playback
+ * and speech recognition on mobile browsers.
  */
 import { $ } from './dom.js';
 import { state } from './state.js';
@@ -44,7 +49,7 @@ export function stopVoiceAssistant() {
     $('transcriptionCard').style.display = 'none';
 }
 
-async function readScenarioStepByStep() {
+function readScenarioStepByStep() {
     if (!state.isVoiceActive) return;
 
     if (!state.scenarioArray || state.scenarioArray.length === 0) {
@@ -60,10 +65,14 @@ async function readScenarioStepByStep() {
 
     const text = state.scenarioArray[state.currentScenarioIndex];
     $('transcriptionText').textContent = text;
-    await playStepAudio(text);
+    playStepAudio(text);
 }
 
-async function playStepAudio(promptText) {
+/**
+ * Plays TTS audio for a given text. After playback ends, starts voice recognition.
+ * Uses fire-and-forget pattern (no await) to preserve user-activation context.
+ */
+function playStepAudio(promptText) {
     if (!state.isVoiceActive) return;
 
     try {
@@ -71,18 +80,25 @@ async function playStepAudio(promptText) {
         state.currentAudio = audio;
 
         audio.onended = () => {
+            console.log('[Voice] Audio ended, starting recognition...');
             state.currentAudio = null;
             if (state.isVoiceActive) startLocalVoiceCommand();
         };
 
-        audio.onerror = () => {
+        audio.onerror = (e) => {
+            console.warn('[Voice] Audio error, falling back to recognition:', e);
             state.currentAudio = null;
             if (state.isVoiceActive) startLocalVoiceCommand();
         };
 
-        await audio.play();
+        // Fire-and-forget: don't await to keep user-activation context alive
+        audio.play().catch((err) => {
+            console.warn('[Voice] audio.play() rejected:', err.message);
+            state.currentAudio = null;
+            if (state.isVoiceActive) startLocalVoiceCommand();
+        });
     } catch (error) {
-        console.error('Audio playback error:', error);
+        console.error('[Voice] Audio setup error:', error);
         if (state.isVoiceActive) startLocalVoiceCommand();
     }
 }
@@ -111,66 +127,95 @@ function startLocalVoiceCommand() {
             : '🎤 Listening... (say: "next", "repeat", "more" or "stop")';
     };
 
-    recognition.onresult = async (event) => {
+    recognition.onresult = (event) => {
         if (processed || !state.isVoiceActive) return;
         processed = true;
         recognition.stop();
         state.currentRecognition = null;
 
         let transcript = event.results[0][0].transcript.toLowerCase().replace(/[.,!?]/g, '').trim();
+        console.log('[Voice] Heard:', transcript);
         $('transcriptionText').textContent = `You said: "${transcript}"`;
 
-        if (state.isChatMode) {
-            if (transcript.includes('next')) {
-                state.isChatMode = false;
-                $('transcriptionText').textContent = 'Continuing to next step...';
-                state.currentScenarioIndex++;
-                readScenarioStepByStep();
-            } else {
-                await askGeminiQuestion(transcript);
-            }
-            return;
-        }
-
-        if (transcript.includes('next')) {
-            state.currentScenarioIndex++;
-            readScenarioStepByStep();
-        } else if (transcript.includes('repeat')) {
-            readScenarioStepByStep();
-        } else if (transcript.includes('more')) {
-            state.isChatMode = true;
-            const info = 'Help mode activated. Ask your question, or say next to continue.';
-            $('transcriptionText').textContent = info;
-            await playStepAudio(info);
-        } else if (transcript.includes('stop')) {
-            $('transcriptionText').textContent = 'Procedure stopped.';
-            stopVoiceAssistant();
-        } else {
-            const fallback = "I didn't understand. Please say next, repeat, or more.";
-            $('transcriptionText').textContent = fallback;
-            await playStepAudio(fallback);
-        }
+        // Handle command — all in synchronous context to preserve user activation
+        handleVoiceCommand(transcript);
     };
 
-    recognition.onerror = async (event) => {
+    recognition.onerror = (event) => {
         state.currentRecognition = null;
         if (event.error === 'aborted' || !state.isVoiceActive) return;
 
+        console.warn('[Voice] Recognition error:', event.error);
         if (event.error === 'no-speech') {
+            // Re-prompt: play audio then listen again
             const prompt = state.isChatMode
                 ? 'Waiting for your question, or say next.'
                 : 'Please say next, repeat, or more.';
             $('transcriptionText').textContent = prompt;
-            if (state.isVoiceActive) await playStepAudio(prompt);
+            if (state.isVoiceActive) playStepAudio(prompt);
         } else {
             $('transcriptionText').textContent = `Microphone error: ${event.error}`;
         }
     };
 
-    recognition.onend = () => { state.currentRecognition = null; };
-    recognition.start();
+    recognition.onend = () => {
+        state.currentRecognition = null;
+    };
+
+    try {
+        recognition.start();
+        console.log('[Voice] Recognition started');
+    } catch (e) {
+        console.error('[Voice] Failed to start recognition:', e);
+        // Retry after a short delay
+        setTimeout(() => {
+            if (state.isVoiceActive) startLocalVoiceCommand();
+        }, 500);
+    }
 }
 
+/**
+ * Process voice command. Kept synchronous to maintain user-activation context
+ * for subsequent audio.play() calls.
+ */
+function handleVoiceCommand(transcript) {
+    if (state.isChatMode) {
+        if (transcript.includes('next')) {
+            state.isChatMode = false;
+            $('transcriptionText').textContent = 'Continuing to next step...';
+            state.currentScenarioIndex++;
+            readScenarioStepByStep();
+        } else {
+            // Q&A question — this is async but we fire-and-forget
+            askGeminiQuestion(transcript);
+        }
+        return;
+    }
+
+    if (transcript.includes('next')) {
+        state.currentScenarioIndex++;
+        readScenarioStepByStep();
+    } else if (transcript.includes('repeat')) {
+        readScenarioStepByStep();
+    } else if (transcript.includes('more')) {
+        state.isChatMode = true;
+        const info = 'Help mode activated. Ask your question, or say next to continue.';
+        $('transcriptionText').textContent = info;
+        playStepAudio(info);
+    } else if (transcript.includes('stop')) {
+        $('transcriptionText').textContent = 'Procedure stopped.';
+        stopVoiceAssistant();
+    } else {
+        const fallback = "I didn't understand. Please say next, repeat, or more.";
+        $('transcriptionText').textContent = fallback;
+        playStepAudio(fallback);
+    }
+}
+
+/**
+ * Ask Gemini a question via /more endpoint.
+ * Fire-and-forget async — doesn't block the voice command handler.
+ */
 async function askGeminiQuestion(userQuestion) {
     if (!state.isVoiceActive) return;
 
@@ -189,12 +234,12 @@ async function askGeminiQuestion(userQuestion) {
         state.messageHistory.push({ role: 'model', parts: [answer] });
 
         $('transcriptionText').textContent = answer;
-        await playStepAudio(answer);
+        playStepAudio(answer);
     } catch (error) {
-        console.error('Q&A error:', error);
+        console.error('[Voice] Q&A error:', error);
         const errText = 'Communication error. Try asking again or say next.';
         $('transcriptionText').textContent = errText;
-        if (state.isVoiceActive) await playStepAudio(errText);
+        if (state.isVoiceActive) playStepAudio(errText);
     }
 }
 
