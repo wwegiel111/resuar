@@ -34,10 +34,11 @@ let silenceStartedAt = 0;
 let recordingChunks = [];
 
 // VAD tuning constants
-const VAD_THRESHOLD = 0.02;      // RMS threshold; above = speech
-const SPEECH_MIN_MS = 250;       // need this much sustained speech to start recording
-const SILENCE_END_MS = 1200;     // silence this long ends a recording
+const VAD_THRESHOLD = 0.008;     // RMS threshold; above = speech (lowered for iPhone mic)
+const SPEECH_MIN_MS = 200;       // need this much sustained speech to start recording
+const SILENCE_END_MS = 1500;     // silence this long ends a recording
 const MAX_RECORDING_MS = 15000;  // safety cap per utterance
+const VAD_INTERVAL_MS = 50;      // check every 50ms (setInterval, works on iOS)
 
 function ensureAudioUnlocked() {
     if (sharedAudio) return sharedAudio;
@@ -110,7 +111,7 @@ function teardownMic() {
 
 function cancelVadLoop() {
     if (vadRafId) {
-        cancelAnimationFrame(vadRafId);
+        clearInterval(vadRafId);
         vadRafId = null;
     }
 }
@@ -121,9 +122,9 @@ function startVadLoop() {
     speechDetectedAt = 0;
     silenceStartedAt = 0;
 
-    const tick = () => {
+    vadRafId = setInterval(() => {
         if (!state.isVoiceActive || !analyser) {
-            vadRafId = null;
+            cancelVadLoop();
             return;
         }
 
@@ -133,7 +134,17 @@ function startVadLoop() {
             sum += dataArray[i] * dataArray[i];
         }
         const rms = Math.sqrt(sum / dataArray.length);
-        const now = performance.now();
+        const now = Date.now();
+
+        // Update visual indicator
+        const transcriptionEl = $('transcriptionText');
+        if (transcriptionEl && !isRecording && state.isVoiceActive) {
+            const bars = rms > VAD_THRESHOLD ? '🟢' : '⚪';
+            const baseText = state.isChatMode
+                ? 'Q&A mode — Ask a question or say "next"'
+                : 'Listening... (say: "next", "repeat", "more" or "stop")';
+            transcriptionEl.textContent = `${bars} ${baseText}`;
+        }
 
         if (rms > VAD_THRESHOLD) {
             // Speech energy detected
@@ -158,10 +169,7 @@ function startVadLoop() {
                 }
             }
         }
-
-        vadRafId = requestAnimationFrame(tick);
-    };
-    vadRafId = requestAnimationFrame(tick);
+    }, VAD_INTERVAL_MS);
 }
 
 function startRecording() {
@@ -169,7 +177,7 @@ function startRecording() {
     try {
         const opts = recorderMime ? { mimeType: recorderMime } : {};
         mediaRecorder = new MediaRecorder(micStream, opts);
-        mediaRecorder._startedAt = performance.now();
+        mediaRecorder._startedAt = Date.now();
         recordingChunks = [];
 
         mediaRecorder.ondataavailable = (e) => {
