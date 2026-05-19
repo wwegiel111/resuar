@@ -7,7 +7,7 @@ export async function analyzeImage(file) {
     formData.append('file', file);
     const response = await fetch('/analyze', { method: 'POST', body: formData });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'Unknown error');
+    if (!response.ok) throw new Error(data.detail || data.error || 'Analysis failed');
     return data;
 }
 
@@ -17,8 +17,8 @@ export async function askMore(history) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ history }),
     });
-    if (!response.ok) throw new Error('Server error');
     const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || data.error || 'Server error');
     return data.text || '';
 }
 

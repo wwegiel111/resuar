@@ -16,10 +16,7 @@ import os
 import re
 import io
 import json
-import time
-import struct
 import tempfile
-from collections import defaultdict
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -624,33 +621,40 @@ async def more(request: Request, chat_request: ChatRequest):
 
 
 # ---------------------------------------------------------------------------
-# [6] FIXED MOCK AUDIO — returns a real silent MP3 file instead of JSON
+# [6] FIXED MOCK AUDIO — returns a real silent WAV file instead of JSON
 # ---------------------------------------------------------------------------
-def generate_silent_mp3(duration_ms: int = 500) -> bytes:
-    """
-    Generate a minimal valid MP3 file containing silence.
-    Uses a single MPEG Audio frame with zero audio data.
-    This ensures new Audio(url) works correctly in the browser.
-    """
-    # Minimal valid MP3: MPEG1 Layer3, 128kbps, 44100Hz, stereo
-    # Frame header: 0xFFFB9004 = sync(11) + version(2) + layer(2) + no CRC(1) +
-    #               bitrate(4)=128k + samplerate(2)=44100 + padding(1)=0 + private(1)=0 +
-    #               channel(2)=stereo + ...
-    frame_header = b'\xff\xfb\x90\x04'
-    # Frame size for 128kbps, 44100Hz = 417 bytes (including header)
-    frame_size = 417
-    padding = b'\x00' * (frame_size - len(frame_header))
-    single_frame = frame_header + padding
+import struct as _struct
 
-    # Calculate how many frames we need for the desired duration
-    # Each frame at 44100Hz = 1152 samples = ~26.12ms
-    frames_needed = max(1, int(duration_ms / 26.12))
+def _generate_silent_wav(duration_ms: int = 600) -> bytes:
+    """Generate a valid WAV file with silence. WAV is universally supported by browsers."""
+    sample_rate = 22050
+    num_channels = 1
+    bits_per_sample = 16
+    num_samples = int(sample_rate * duration_ms / 1000)
+    data_size = num_samples * num_channels * (bits_per_sample // 8)
 
-    return single_frame * frames_needed
+    # WAV header (44 bytes) + silent PCM data
+    header = _struct.pack(
+        '<4sI4s4sIHHIIHH4sI',
+        b'RIFF',
+        36 + data_size,       # file size - 8
+        b'WAVE',
+        b'fmt ',
+        16,                   # chunk size
+        1,                    # PCM format
+        num_channels,
+        sample_rate,
+        sample_rate * num_channels * bits_per_sample // 8,  # byte rate
+        num_channels * bits_per_sample // 8,                # block align
+        bits_per_sample,
+        b'data',
+        data_size,
+    )
+    return header + (b'\x00' * data_size)
 
-
-# Pre-generate the silent MP3 bytes once at startup
-SILENT_MP3 = generate_silent_mp3(800)  # 800ms of silence
+# Pre-generate silent audio at startup
+SILENT_AUDIO = _generate_silent_wav(600)
+SILENT_AUDIO_MIME = "audio/wav"
 
 
 def get_safe_filename(text: str) -> str:
@@ -686,8 +690,8 @@ async def get_audio(request: Request, prompt: str):
     # [6] Mock mode: return a real silent MP3 (not JSON!)
     if not ELEVENLABS_AVAILABLE or elevenlabs_client is None:
         return Response(
-            content=SILENT_MP3,
-            media_type="audio/mpeg",
+            content=SILENT_AUDIO,
+            media_type=SILENT_AUDIO_MIME,
             headers={"X-Mock-Audio": "true"}
         )
 
@@ -709,8 +713,8 @@ async def get_audio(request: Request, prompt: str):
 
     except Exception as e:
         print(f"[ERROR TTS]: {e}")
-        # Fallback to silent MP3 on error — don't break the voice assistant
-        return Response(content=SILENT_MP3, media_type="audio/mpeg")
+        # Fallback to silent audio on error — don't break the voice assistant
+        return Response(content=SILENT_AUDIO, media_type=SILENT_AUDIO_MIME)
 
 
 # ============================================================================
