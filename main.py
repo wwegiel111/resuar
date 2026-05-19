@@ -6,12 +6,25 @@ from fastapi import FastAPI, UploadFile, File
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
-import vertexai
-from vertexai.generative_models import GenerativeModel, Part, GenerationConfig, HarmCategory, HarmBlockThreshold, Content
 import PIL.Image
 from pydantic import BaseModel
-from elevenlabs.client import ElevenLabs
 from typing import List, Dict
+
+# Try to import Google and ElevenLabs, but allow graceful fallback
+try:
+    import vertexai
+    from vertexai.generative_models import GenerativeModel, Part, GenerationConfig, HarmCategory, HarmBlockThreshold, Content
+    GOOGLE_AVAILABLE = True
+except ImportError:
+    GOOGLE_AVAILABLE = False
+    print("⚠️  Google Cloud AI not available - using mock mode")
+
+try:
+    from elevenlabs.client import ElevenLabs
+    ELEVENLABS_AVAILABLE = True
+except ImportError:
+    ELEVENLABS_AVAILABLE = False
+    print("⚠️  ElevenLabs not available - using mock mode")
 
 
 app = FastAPI()
@@ -25,6 +38,10 @@ app.add_middleware(
 
 # --- LOGIKA AUTORYZACJI ---
 def setup_vertex_ai():
+    if not GOOGLE_AVAILABLE:
+        print("✓ Running in MOCK MODE (Google Cloud AI)")
+        return
+    
     creds_json = os.getenv("GOOGLE_CREDS_JSON")
     project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar") 
     location = "us-central1"
@@ -36,16 +53,28 @@ def setup_vertex_ai():
         
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
         vertexai.init(project=project_id, location=location)
-        print("Vertex AI zainicjowany pomyślnie.")
+        print("✓ Vertex AI initialized successfully")
     else:
-        print("BŁĄD: Brak zmiennej GOOGLE_CREDS_JSON!")
+        print("⚠️  GOOGLE_CREDS_JSON not set - using mock mode")
 
 setup_vertex_ai()
-elevenlabs_client = ElevenLabs(api_key=os.getenv("ELEVENLABS_API_KEY"))
+
+# Initialize ElevenLabs if available
+elevenlabs_client = None
+if ELEVENLABS_AVAILABLE:
+    api_key = os.getenv("ELEVENLABS_API_KEY")
+    if api_key:
+        elevenlabs_client = ElevenLabs(api_key=api_key)
+        print("✓ ElevenLabs initialized successfully")
+    else:
+        print("⚠️  ELEVENLABS_API_KEY not set - using mock mode")
 
 # Konfiguracja modelu rozpoznawania obrazen
-system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
-model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+if GOOGLE_AVAILABLE:
+    system_instruction = "Jesteś ekspertem medycznym AI. Klasyfikuj rany: 'Poparzenie' lub 'Rozcięcie'. Odpowiedz TYLKO JEDNYM SŁOWEM."
+    model = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction)
+else:
+    model = None
 
 #scenariusze
 scenario_dict = {
@@ -67,8 +96,11 @@ scenario_dict = {
 }
 
 #model rozwiniecia rozmowy
-system_instruction_model_more_info = "You are an AI emergency medical expert. Analyze the conversation history and clarify the user's query regarding the current first-aid step. Provide a calm, actionable response limited to a maximum of 3 short sentences."
-modelMoreInfo = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction_model_more_info)
+if GOOGLE_AVAILABLE:
+    system_instruction_model_more_info = "You are an AI emergency medical expert. Analyze the conversation history and clarify the user's query regarding the current first-aid step. Provide a calm, actionable response limited to a maximum of 3 short sentences."
+    modelMoreInfo = GenerativeModel("gemini-2.5-flash", system_instruction=system_instruction_model_more_info)
+else:
+    modelMoreInfo = None
 
 class AudioRequest(BaseModel):
     prompt: str
@@ -87,6 +119,15 @@ def home():
 async def analyze(file: UploadFile = File(...)):
     contents = await file.read()
     img = PIL.Image.open(io.BytesIO(contents))
+    
+    # Mock response for demo
+    if not GOOGLE_AVAILABLE or model is None:
+        return {
+            "diagnosis": "Poparzenie",
+            "scenario_array": scenario_dict.get("Poparzenie", []),
+            "mock": True,
+            "message": "Running in mock mode - using demo diagnosis"
+        }
     
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='JPEG')
@@ -115,6 +156,14 @@ class ChatRequest(BaseModel):
 @app.post("/more")
 async def more(request: ChatRequest):
     print("\n--- START ZAPYTANIA /more ---")
+    
+    # Mock response for demo
+    if not GOOGLE_AVAILABLE or modelMoreInfo is None:
+        return {
+            "text": "This is a demo response. To get real AI responses, please configure your Google Cloud and ElevenLabs API keys.",
+            "mock": True
+        }
+    
     safety_settings = {
         HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -186,6 +235,21 @@ async def get_audio(prompt: str):
     if os.path.exists(file_path) and os.path.getsize(file_path) > 0:
         print(f"[CACHE] Wysyłam gotowy plik: {filename}")
         return FileResponse(file_path, media_type="audio/mpeg")
+
+    # Mock response for demo
+    if not ELEVENLABS_AVAILABLE or elevenlabs_client is None:
+        print(f"[MOCK] Generating mock audio for: {filename}")
+        # Create a simple silent MP3 file for demo
+        import wave
+        temp_wav = file_path.replace('.mp3', '.wav')
+        with wave.open(temp_wav, 'w') as wav_file:
+            wav_file.setnchannels(1)
+            wav_file.setsampwidth(2)
+            wav_file.setframerate(44100)
+            wav_file.writeframes(b'\x00' * 44100)  # 1 second of silence
+        
+        # For demo, just return a message
+        return {"message": "Mock audio mode - ElevenLabs not configured", "mock": True}
 
     print(f"[API] Generuję nowy plik dla Apple: {filename}")
     try:
