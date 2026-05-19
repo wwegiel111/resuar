@@ -5,10 +5,25 @@
  * context from SpeechRecognition's onresult callback. Using await would cause the
  * browser to lose the "user gesture" context, blocking subsequent audio playback
  * and speech recognition on mobile browsers.
+ *
+ * iOS Safari fix: a single Audio element is created and "unlocked" on the initial
+ * user click. The same element is reused (just changing .src) for all subsequent
+ * playbacks, bypassing iOS's per-play autoplay restriction.
  */
 import { $ } from './dom.js';
 import { state } from './state.js';
 import { askMore, getAudioUrl } from './api.js';
+
+// Single reusable Audio element — created/unlocked on first user click
+let sharedAudio = null;
+
+function ensureAudioUnlocked() {
+    if (sharedAudio) return sharedAudio;
+    sharedAudio = new Audio();
+    sharedAudio.preload = 'auto';
+    // Unlock on iOS by attempting a play of an empty src — first user gesture allows this
+    return sharedAudio;
+}
 
 export function toggleVoiceAssistant() {
     if (state.isVoiceActive) {
@@ -16,6 +31,9 @@ export function toggleVoiceAssistant() {
         stopVoiceAssistant();
         return;
     }
+
+    // Initialize the shared Audio element on this user gesture (required by iOS Safari)
+    ensureAudioUnlocked();
 
     state.isVoiceActive = true;
     const btnVoice = $('btnVoiceAssistant');
@@ -34,10 +52,15 @@ export function stopVoiceAssistant() {
     state.isVoiceActive = false;
     state.isChatMode = false;
 
-    if (state.currentAudio) {
-        state.currentAudio.pause();
-        state.currentAudio = null;
+    if (sharedAudio) {
+        try {
+            sharedAudio.pause();
+            sharedAudio.removeAttribute('src');
+            sharedAudio.load();
+        } catch (e) { /* ignore */ }
     }
+    state.currentAudio = null;
+
     if (state.currentRecognition) {
         try { state.currentRecognition.abort(); } catch (e) { /* ignore */ }
         state.currentRecognition = null;
@@ -69,42 +92,40 @@ function readScenarioStepByStep() {
 }
 
 /**
- * Plays TTS audio for a given text. After playback ends, starts voice recognition.
- * Uses fire-and-forget pattern (no await) to preserve user-activation context.
+ * Plays TTS audio for a given text. Reuses a single Audio element to avoid
+ * iOS Safari blocking subsequent playbacks outside of the initial user gesture.
  */
 function playStepAudio(promptText) {
     if (!state.isVoiceActive) return;
 
-    const audio = new Audio(getAudioUrl(promptText));
+    const audio = ensureAudioUnlocked();
     state.currentAudio = audio;
 
-    // Fallback timer — if audio doesn't start within 8s, skip to recognition
-    // This handles cases where the server is slow or audio fails silently
+    // Clean previous handlers
+    audio.onended = null;
+    audio.onerror = null;
+    audio.oncanplaythrough = null;
+
+    // Fallback: if audio doesn't load/play within 8s, skip to recognition
     const fallbackTimer = setTimeout(() => {
         console.warn('[Voice] Audio timeout — skipping to recognition');
-        if (state.currentAudio === audio) {
-            audio.pause();
-            state.currentAudio = null;
-            if (state.isVoiceActive) startLocalVoiceCommand();
+        if (state.isVoiceActive && state.currentAudio === audio) {
+            try { audio.pause(); } catch (e) { /* ignore */ }
+            startLocalVoiceCommand();
         }
     }, 8000);
 
-    audio.oncanplaythrough = () => {
-        // Audio is ready — clear the fallback timer, let it play naturally
-        clearTimeout(fallbackTimer);
-    };
+    audio.oncanplaythrough = () => clearTimeout(fallbackTimer);
 
     audio.onended = () => {
         clearTimeout(fallbackTimer);
-        state.currentAudio = null;
         if (state.isVoiceActive) startLocalVoiceCommand();
     };
 
     audio.onerror = (e) => {
         clearTimeout(fallbackTimer);
         console.warn('[Voice] Audio error:', e);
-        state.currentAudio = null;
-        // Simulate reading time before listening (for mock/silent audio)
+        // Simulate reading time before listening
         const words = promptText.split(/\s+/).length;
         const delay = Math.max(1500, words * 80);
         setTimeout(() => {
@@ -112,16 +133,22 @@ function playStepAudio(promptText) {
         }, delay);
     };
 
-    audio.play().catch((err) => {
-        clearTimeout(fallbackTimer);
-        console.warn('[Voice] audio.play() rejected:', err.message);
-        state.currentAudio = null;
-        const words = promptText.split(/\s+/).length;
-        const delay = Math.max(1500, words * 80);
-        setTimeout(() => {
-            if (state.isVoiceActive) startLocalVoiceCommand();
-        }, delay);
-    });
+    // Set new source and play
+    audio.src = getAudioUrl(promptText);
+    audio.load();
+
+    const playPromise = audio.play();
+    if (playPromise && playPromise.catch) {
+        playPromise.catch((err) => {
+            clearTimeout(fallbackTimer);
+            console.warn('[Voice] audio.play() rejected:', err.message);
+            const words = promptText.split(/\s+/).length;
+            const delay = Math.max(1500, words * 80);
+            setTimeout(() => {
+                if (state.isVoiceActive) startLocalVoiceCommand();
+            }, delay);
+        });
+    }
 }
 
 function startLocalVoiceCommand() {
