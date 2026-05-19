@@ -71,36 +71,60 @@ function readScenarioStepByStep() {
 /**
  * Plays TTS audio for a given text. After playback ends, starts voice recognition.
  * Uses fire-and-forget pattern (no await) to preserve user-activation context.
+ * In mock mode (silent audio), simulates reading time based on text length.
  */
 function playStepAudio(promptText) {
     if (!state.isVoiceActive) return;
 
-    try {
-        const audio = new Audio(getAudioUrl(promptText));
-        state.currentAudio = audio;
+    const url = getAudioUrl(promptText);
 
-        audio.onended = () => {
-            console.log('[Voice] Audio ended, starting recognition...');
-            state.currentAudio = null;
-            if (state.isVoiceActive) startLocalVoiceCommand();
-        };
+    // First, do a fetch to check if it's mock audio
+    fetch(url).then(response => {
+        if (!state.isVoiceActive) return;
 
-        audio.onerror = (e) => {
-            console.warn('[Voice] Audio error, falling back to recognition:', e);
-            state.currentAudio = null;
-            if (state.isVoiceActive) startLocalVoiceCommand();
-        };
+        const isMock = response.headers.get('X-Mock-Audio') === 'true';
 
-        // Fire-and-forget: don't await to keep user-activation context alive
-        audio.play().catch((err) => {
-            console.warn('[Voice] audio.play() rejected:', err.message);
-            state.currentAudio = null;
-            if (state.isVoiceActive) startLocalVoiceCommand();
+        if (isMock) {
+            // Mock mode: simulate reading time (roughly 80ms per word)
+            const words = promptText.split(/\s+/).length;
+            const readingTime = Math.max(2000, words * 80);
+            console.log(`[Voice] Mock mode — simulating ${readingTime}ms reading time`);
+            setTimeout(() => {
+                if (state.isVoiceActive) startLocalVoiceCommand();
+            }, readingTime);
+            return;
+        }
+
+        // Real audio: create Audio element from the blob
+        response.blob().then(blob => {
+            if (!state.isVoiceActive) return;
+            const audioUrl = URL.createObjectURL(blob);
+            const audio = new Audio(audioUrl);
+            state.currentAudio = audio;
+
+            audio.onended = () => {
+                URL.revokeObjectURL(audioUrl);
+                state.currentAudio = null;
+                if (state.isVoiceActive) startLocalVoiceCommand();
+            };
+
+            audio.onerror = () => {
+                URL.revokeObjectURL(audioUrl);
+                state.currentAudio = null;
+                if (state.isVoiceActive) startLocalVoiceCommand();
+            };
+
+            audio.play().catch((err) => {
+                console.warn('[Voice] audio.play() rejected:', err.message);
+                URL.revokeObjectURL(audioUrl);
+                state.currentAudio = null;
+                if (state.isVoiceActive) startLocalVoiceCommand();
+            });
         });
-    } catch (error) {
-        console.error('[Voice] Audio setup error:', error);
+    }).catch(err => {
+        console.error('[Voice] Fetch audio error:', err);
         if (state.isVoiceActive) startLocalVoiceCommand();
-    }
+    });
 }
 
 function startLocalVoiceCommand() {
