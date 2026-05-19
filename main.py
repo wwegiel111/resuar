@@ -621,6 +621,66 @@ async def more(request: Request, chat_request: ChatRequest):
 
 
 # ---------------------------------------------------------------------------
+# AUDIO TRANSCRIPTION — used by iOS-friendly voice control flow.
+# Browser records short utterances and sends them here for STT via Gemini.
+# ---------------------------------------------------------------------------
+ALLOWED_AUDIO_MIMES = {
+    "audio/webm", "audio/webm;codecs=opus",
+    "audio/ogg", "audio/ogg;codecs=opus",
+    "audio/mp4", "audio/m4a", "audio/x-m4a",
+    "audio/mpeg", "audio/wav", "audio/x-wav",
+}
+MAX_AUDIO_BYTES = 5 * 1024 * 1024  # 5MB — covers ~30s of typical recording
+
+
+@app.post("/transcribe")
+@limiter.limit("60/minute")
+async def transcribe(request: Request, file: UploadFile = File(...)):
+    # Validate MIME (lenient — browsers report variations)
+    ctype = (file.content_type or "").lower().split(";")[0].strip()
+    base_allowed = {m.split(";")[0] for m in ALLOWED_AUDIO_MIMES}
+    if ctype and ctype not in base_allowed:
+        raise HTTPException(status_code=400, detail=f"Unsupported audio type: {ctype}")
+
+    contents = await file.read()
+    if not contents:
+        raise HTTPException(status_code=400, detail="Empty audio")
+    if len(contents) > MAX_AUDIO_BYTES:
+        raise HTTPException(status_code=400, detail="Audio too large")
+
+    # Mock response for dev mode
+    if not GOOGLE_AVAILABLE or modelTranscribe is None:
+        return {"transcript": "", "mock": True}
+
+    # Use the actual MIME the browser sent (Gemini accepts most common formats)
+    mime = file.content_type or "audio/webm"
+    if ";" in mime:
+        mime = mime.split(";")[0]
+
+    safety_settings = {
+        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+    }
+
+    try:
+        audio_part = Part.from_data(data=contents, mime_type=mime)
+        response = modelTranscribe.generate_content(
+            [audio_part, "Transcribe the spoken words. Return only the words, lowercase, no punctuation."],
+            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
+            safety_settings=safety_settings,
+        )
+        text = (response.text or "").strip().lower()
+        # Strip surrounding quotes if Gemini adds them
+        text = text.strip('"\'`')
+        return {"transcript": text}
+    except Exception as e:
+        print(f"[ERROR /transcribe]: {e}")
+        raise HTTPException(status_code=500, detail="Transcription failed")
+
+
+# ---------------------------------------------------------------------------
 # [6] FIXED MOCK AUDIO — returns a real silent WAV file instead of JSON
 # ---------------------------------------------------------------------------
 import struct as _struct

@@ -25,3 +25,12 @@ export async function askMore(history) {
 export function getAudioUrl(prompt) {
     return `/get_audio?prompt=${encodeURIComponent(prompt)}`;
 }
+
+export async function transcribeAudio(blob) {
+    const formData = new FormData();
+    formData.append('file', blob, 'recording.webm');
+    const response = await fetch('/transcribe', { method: 'POST', body: formData });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.detail || 'Transcription failed');
+    return (data.transcript || '').toLowerCase();
+}
