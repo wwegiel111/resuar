@@ -34,11 +34,11 @@ let silenceStartedAt = 0;
 let recordingChunks = [];
 
 // VAD tuning constants
-const VAD_THRESHOLD = 0.008;     // RMS threshold; above = speech (lowered for iPhone mic)
-const SPEECH_MIN_MS = 200;       // need this much sustained speech to start recording
-const SILENCE_END_MS = 1500;     // silence this long ends a recording
-const MAX_RECORDING_MS = 15000;  // safety cap per utterance
-const VAD_INTERVAL_MS = 50;      // check every 50ms (setInterval, works on iOS)
+const VAD_THRESHOLD = 0.004;     // RMS threshold; very sensitive to catch quiet speech
+const SPEECH_MIN_MS = 100;       // start recording almost immediately when speech detected
+const SILENCE_END_MS = 1800;     // wait longer before cutting off (user might pause between words)
+const MAX_RECORDING_MS = 20000;  // safety cap per utterance
+const VAD_INTERVAL_MS = 30;      // check every 30ms for responsiveness
 
 function ensureAudioUnlocked() {
     if (sharedAudio) return sharedAudio;
@@ -122,6 +122,9 @@ function startVadLoop() {
     speechDetectedAt = 0;
     silenceStartedAt = 0;
 
+    // Start recording immediately — we'll discard if no speech detected
+    startRecording();
+
     vadRafId = setInterval(() => {
         if (!state.isVoiceActive || !analyser) {
             cancelVadLoop();
@@ -138,34 +141,43 @@ function startVadLoop() {
 
         // Update visual indicator
         const transcriptionEl = $('transcriptionText');
-        if (transcriptionEl && !isRecording && state.isVoiceActive) {
+        if (transcriptionEl && state.isVoiceActive) {
             const bars = rms > VAD_THRESHOLD ? '🟢' : '⚪';
-            const baseText = state.isChatMode
-                ? 'Q&A mode — Ask a question or say "next"'
-                : 'Listening... (say: "next", "repeat", "more" or "stop")';
-            transcriptionEl.textContent = `${bars} ${baseText}`;
+            if (!speechDetectedAt && !isRecording) {
+                const baseText = state.isChatMode
+                    ? 'Q&A mode — Ask a question or say "next"'
+                    : 'Listening... (say: "next", "repeat", "more" or "stop")';
+                transcriptionEl.textContent = `${bars} ${baseText}`;
+            }
         }
 
         if (rms > VAD_THRESHOLD) {
             // Speech energy detected
             silenceStartedAt = 0;
             if (!speechDetectedAt) speechDetectedAt = now;
-
-            if (!isRecording && (now - speechDetectedAt) >= SPEECH_MIN_MS) {
-                startRecording();
-            }
         } else {
-            // Below threshold = silence
-            if (!isRecording) {
-                speechDetectedAt = 0;
-            } else {
+            // Silence
+            if (speechDetectedAt && isRecording) {
+                // We had speech and now it's quiet
                 if (!silenceStartedAt) silenceStartedAt = now;
                 if (now - silenceStartedAt >= SILENCE_END_MS) {
+                    // Enough silence after speech — stop and send
                     stopRecording(false);
+                    return; // VAD loop will be restarted after processing
                 }
-                // Safety cap
-                if (mediaRecorder && mediaRecorder._startedAt && now - mediaRecorder._startedAt >= MAX_RECORDING_MS) {
-                    stopRecording(false);
+            }
+
+            // Safety cap
+            if (isRecording && mediaRecorder && mediaRecorder._startedAt) {
+                if (now - mediaRecorder._startedAt >= MAX_RECORDING_MS) {
+                    if (speechDetectedAt) {
+                        stopRecording(false);
+                    } else {
+                        // No speech detected in max time — discard and restart
+                        stopRecording(true);
+                        if (state.isVoiceActive) startVadLoop();
+                    }
+                    return;
                 }
             }
         }
@@ -186,13 +198,15 @@ function startRecording() {
 
         mediaRecorder.onstop = async () => {
             isRecording = false;
+            cancelVadLoop(); // Stop VAD during processing
             const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || recorderMime || 'audio/mp4' });
             recordingChunks = [];
+            const hadSpeech = !!speechDetectedAt;
             speechDetectedAt = 0;
             silenceStartedAt = 0;
 
-            if (blob.size < 500) {
-                // Too short — likely just noise, resume listening
+            if (!hadSpeech || blob.size < 500) {
+                // No speech was detected — restart listening
                 if (state.isVoiceActive) beginListening();
                 return;
             }
