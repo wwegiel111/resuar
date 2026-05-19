@@ -196,6 +196,37 @@
             </div>
         </div>
 
+        <!-- VOICE GUIDANCE (full-screen step view) -->
+        <div id="voiceGuideScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="exitVoiceGuide()">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo" id="voiceGuideTitle">Voice Guidance</span>
+                <button class="close-process-btn" onclick="exitVoiceGuide()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <div class="voice-guide-wrapper">
+                <!-- Progress dots -->
+                <div class="vg-progress" id="vgProgress"></div>
+                <p class="vg-step-label" id="vgStepLabel">STEP 1 OF 5</p>
+
+                <!-- Current step text (large) -->
+                <h2 class="vg-step-text" id="vgStepText">Loading step...</h2>
+
+                <!-- Spacer pushes status to bottom -->
+                <div class="vg-spacer"></div>
+
+                <!-- Listening status (fixed at bottom of content) -->
+                <div class="vg-status" id="vgStatus">
+                    <div class="vg-status-indicator" id="vgStatusDot"></div>
+                    <p id="vgStatusText">🎤 Listening...</p>
+                </div>
+            </div>
+        </div>
+
         <!-- CHAT -->
         <div id="chatScreen" class="screen">
             <div class="header" style="position: relative;">
