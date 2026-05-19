@@ -14,6 +14,7 @@
 import { $ } from './dom.js';
 import { state } from './state.js';
 import { askMore, getAudioUrl, transcribeAudio } from './api.js';
+import { switchScreen } from './navigation.js';
 
 // --- Single Audio element reused across the session (iOS unlock) ---
 let sharedAudio = null;
@@ -140,7 +141,7 @@ function startVadLoop() {
         const now = Date.now();
 
         // Update visual indicator
-        const transcriptionEl = $('transcriptionText');
+        const transcriptionEl = $('vgStatusText');
         if (transcriptionEl && state.isVoiceActive) {
             const bars = rms > VAD_THRESHOLD ? '🟢' : '⚪';
             if (!speechDetectedAt && !isRecording) {
@@ -211,7 +212,7 @@ function startRecording() {
                 return;
             }
 
-            $('transcriptionText').textContent = '⏳ Processing...';
+            $('vgStatusText').textContent = '⏳ Processing...';
             try {
                 const transcript = await transcribeAudio(blob);
                 console.log('[Voice] Transcribed:', transcript);
@@ -221,7 +222,7 @@ function startRecording() {
                     beginListening();
                     return;
                 }
-                $('transcriptionText').textContent = `You said: "${transcript}"`;
+                setVgStatus(`You said: "${transcript}"`);
                 handleVoiceCommand(transcript);
             } catch (err) {
                 console.error('[Voice] Transcribe error:', err);
@@ -232,7 +233,7 @@ function startRecording() {
         // Use timeslice to ensure ondataavailable fires on iOS Safari
         mediaRecorder.start(250);
         isRecording = true;
-        $('transcriptionText').textContent = '🔴 Recording...';
+        setVgStatus('🔴 Recording...');
     } catch (err) {
         console.error('[Voice] startRecording error:', err);
         isRecording = false;
@@ -277,6 +278,14 @@ export async function toggleVoiceAssistant() {
     state.currentScenarioIndex = 0;
     state.isChatMode = false;
     state.messageHistory.length = 0;
+
+    // Switch to dedicated voice guide screen
+    const diagTitle = $('diagTitle');
+    const title = diagTitle ? diagTitle.textContent : 'Voice Guidance';
+    $('voiceGuideTitle').textContent = `${title} · Live`;
+    switchScreen('voiceGuideScreen', null, -1);
+    updateVoiceGuideUI();
+
     readScenarioStepByStep();
 }
 
@@ -296,28 +305,72 @@ export function stopVoiceAssistant() {
     teardownMic();
 
     const btnVoice = $('btnVoiceAssistant');
-    btnVoice.classList.remove('active');
-    btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
-    $('transcriptionCard').style.display = 'none';
+    if (btnVoice) {
+        btnVoice.classList.remove('active');
+        btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+    }
+    const tc = $('transcriptionCard');
+    if (tc) tc.style.display = 'none';
+
+    // Return to diagnosis screen
+    switchScreen('diagnosisScreen', null, 2);
 }
 
 function readScenarioStepByStep() {
     if (!state.isVoiceActive) return;
 
     if (!state.scenarioArray || state.scenarioArray.length === 0) {
-        $('transcriptionText').textContent = 'No scenario steps available.';
+        setVgStatus('No scenario steps available.');
         return;
     }
 
     if (state.currentScenarioIndex >= state.scenarioArray.length) {
-        $('transcriptionText').textContent = 'First aid procedure completed.';
-        stopVoiceAssistant();
+        setVgStatus('✅ First aid procedure completed.');
+        setTimeout(() => stopVoiceAssistant(), 2000);
         return;
     }
 
+    updateVoiceGuideUI();
     const text = state.scenarioArray[state.currentScenarioIndex];
-    $('transcriptionText').textContent = text;
     playStepAudio(text);
+}
+
+/** Update the voice guide screen UI with current step info */
+function updateVoiceGuideUI() {
+    const total = state.scenarioArray.length;
+    const current = state.currentScenarioIndex;
+    const text = state.scenarioArray[current] || '';
+
+    // Step label (skip welcome message as "step 0")
+    const stepNum = current + 1;
+    const stepLabel = $('vgStepLabel');
+    if (stepLabel) stepLabel.textContent = `STEP ${stepNum} OF ${total}`;
+
+    // Step text
+    const stepText = $('vgStepText');
+    if (stepText) stepText.textContent = text;
+
+    // Progress dots
+    const progressEl = $('vgProgress');
+    if (progressEl) {
+        let dots = '';
+        for (let i = 0; i < total; i++) {
+            if (i < current) dots += '<div class="vg-progress-dot done"></div>';
+            else if (i === current) dots += '<div class="vg-progress-dot active"></div>';
+            else dots += '<div class="vg-progress-dot"></div>';
+        }
+        progressEl.innerHTML = dots;
+    }
+
+    setVgStatus('🔊 Speaking...');
+}
+
+function setVgStatus(text) {
+    const el = $('vgStatusText');
+    if (el) el.textContent = text;
+    // Also update old transcription card for backward compat
+    const tc = $('transcriptionText');
+    if (tc) tc.textContent = text;
 }
 
 /**
@@ -378,9 +431,10 @@ function playStepAudio(promptText) {
 
 function beginListening() {
     if (!state.isVoiceActive) return;
-    $('transcriptionText').textContent = state.isChatMode
+    const statusText = state.isChatMode
         ? '🎤 Q&A mode — Ask a question or say "next"...'
         : '🎤 Listening... (say: "next", "repeat", "more" or "stop")';
+    setVgStatus(statusText);
     startVadLoop();
 }
 
@@ -421,7 +475,7 @@ function handleVoiceCommand(transcript) {
 async function askGeminiQuestion(userQuestion) {
     if (!state.isVoiceActive) return;
     try {
-        $('transcriptionText').textContent = 'Thinking...';
+        setVgStatus('🤔 Thinking...');
         let questionForAI = userQuestion;
         if (state.messageHistory.length === 0) {
             const ctx = state.scenarioArray[state.currentScenarioIndex] || 'No context';
@@ -430,18 +484,25 @@ async function askGeminiQuestion(userQuestion) {
         state.messageHistory.push({ role: 'user', parts: [questionForAI] });
         const answer = await askMore(state.messageHistory);
         state.messageHistory.push({ role: 'model', parts: [answer] });
-        $('transcriptionText').textContent = answer;
+
+        // Show answer as the step text temporarily
+        const stepText = $('vgStepText');
+        if (stepText) stepText.textContent = answer;
+        setVgStatus('🔊 Speaking...');
         playStepAudio(answer);
     } catch (error) {
         console.error('[Voice] Q&A error:', error);
         const errText = 'Communication error. Try asking again or say next.';
-        $('transcriptionText').textContent = errText;
+        setVgStatus(errText);
         if (state.isVoiceActive) playStepAudio(errText);
     }
 }
 
 // Expose to global scope
 window.toggleVoiceAssistant = toggleVoiceAssistant;
+window.exitVoiceGuide = function() {
+    stopVoiceAssistant();
+};
 window.voiceCommand = function(cmd) {
     if (!state.isVoiceActive) return;
     cancelVadLoop();
