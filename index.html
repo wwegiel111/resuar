@@ -10,10 +10,10 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/base.css?v=2">
-    <link rel="stylesheet" href="/static/css/layout.css?v=2">
-    <link rel="stylesheet" href="/static/css/components.css?v=2">
-    <link rel="stylesheet" href="/static/css/screens.css?v=2">
+    <link rel="stylesheet" href="/static/css/base.css?v=3">
+    <link rel="stylesheet" href="/static/css/layout.css?v=3">
+    <link rel="stylesheet" href="/static/css/components.css?v=3">
+    <link rel="stylesheet" href="/static/css/screens.css?v=3">
 </head>
 <body>
 
@@ -251,10 +251,29 @@
                 <!-- Spacer pushes status to bottom -->
                 <div class="vg-spacer"></div>
 
+                <!-- Recognized speech (what the STT actually heard) -->
+                <div class="vg-heard" id="vgHeard" style="display:none;">
+                    <span class="vg-heard-label"><i class="fas fa-comment-dots"></i> Recognized speech</span>
+                    <p id="vgHeardText"></p>
+                </div>
+
                 <!-- Listening status (fixed at bottom of content) -->
                 <div class="vg-status" id="vgStatus">
                     <div class="vg-status-indicator" id="vgStatusDot"></div>
                     <p id="vgStatusText">🎤 Listening...</p>
+                </div>
+
+                <!-- Physical buttons mirroring the voice commands -->
+                <div class="voice-controls">
+                    <button class="voice-control-btn" id="btnVcNext" onclick="voiceCommand('next')">
+                        <i class="fas fa-forward"></i> Next
+                    </button>
+                    <button class="voice-control-btn" id="btnVcRepeat" onclick="voiceCommand('repeat')">
+                        <i class="fas fa-redo"></i> Repeat
+                    </button>
+                    <button class="voice-control-btn" id="btnVcMore" onclick="voiceCommand('more')">
+                        <i class="fas fa-question-circle"></i> More
+                    </button>
                 </div>
             </div>
         </div>
@@ -319,7 +338,7 @@
 </div><!-- /.app-container -->
 
 <!-- JavaScript (ES modules) -->
-<script type="module" src="/static/js/app.js?v=2"></script>
+<script type="module" src="/static/js/app.js?v=3"></script>
 
 </body>
 </html>
