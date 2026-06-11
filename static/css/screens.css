@@ -16,7 +16,150 @@ h1 {
     margin-bottom: 6px;
 }
 
-@media (min-width: 768px) {
+/* ---- Tablet-specific adjustments (iPad) ---- */
+@media (min-width: 768px) and (max-width: 1023px) {
+    h1 {
+        font-size: 1.9rem;
+    }
+
+    .grid-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        gap: 14px;
+    }
+
+    .back-btn {
+        display: none;
+    }
+
+    .close-process-btn {
+        top: 32px;
+        right: 48px;
+    }
+
+    .cpr-circle {
+        width: 200px;
+        height: 200px;
+        font-size: 4.5rem;
+    }
+
+    .recovery-illustration {
+        padding: 12px;
+    }
+
+    .recovery-step-title {
+        font-size: 1.4rem;
+    }
+
+    .recovery-step-sub {
+        font-size: 1rem;
+    }
+
+    .diag-title {
+        font-size: 2rem;
+    }
+
+    .vg-step-text {
+        font-size: 1.5rem;
+        padding: 20px;
+    }
+
+    .scan-content-wrapper {
+        max-width: 520px;
+    }
+
+    .camera-view {
+        aspect-ratio: 16/10;
+    }
+
+    .chat-container {
+        max-width: 90%;
+    }
+
+    .emergency-list {
+        max-width: 90%;
+    }
+}
+
+/* ---- iPad Portrait-specific (narrower tablets) ---- */
+@media (min-width: 768px) and (max-width: 834px) and (orientation: portrait) {
+    .screen {
+        padding: 28px 40px;
+    }
+
+    h1 {
+        font-size: 1.8rem;
+        margin-bottom: 24px;
+    }
+
+    .desktop-title {
+        font-size: 1.5rem;
+    }
+
+    .recovery-wrapper {
+        max-width: 520px;
+    }
+
+    .diagnosis-wrapper {
+        max-width: 520px;
+    }
+
+    .voice-guide-wrapper {
+        max-width: 520px;
+    }
+}
+
+/* ---- iPad Landscape-specific ---- */
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
+    .screen {
+        padding: 24px 56px;
+    }
+
+    .recovery-wrapper {
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: flex-start;
+        gap: 20px;
+        max-width: 100%;
+    }
+
+    .recovery-illustration {
+        flex: 1 1 55%;
+        min-width: 380px;
+        margin-bottom: 0;
+    }
+
+    .vg-step-label,
+    .recovery-step-title,
+    .recovery-step-sub {
+        flex: 1 1 40%;
+    }
+
+    .vg-progress {
+        width: 100%;
+    }
+
+    .recovery-nav {
+        width: 100%;
+        flex: 1 1 100%;
+    }
+
+    .diagnosis-wrapper {
+        max-width: 100%;
+    }
+
+    .diag-image-container {
+        width: 100%;
+        height: 280px;
+    }
+
+    .voice-guide-wrapper {
+        max-width: 100%;
+    }
+}
+
+/* ---- Desktop-specific adjustments ---- */
+@media (min-width: 1024px) {
     .grid-cards {
         display: grid;
         grid-template-columns: 1fr 1fr 1fr;
