@@ -7,6 +7,7 @@ import { updateProfile } from './profile.js';
 // Side-effect imports: these modules register global handlers on import
 import './navigation.js';
 import './cpr.js';
+import './recovery.js';
 import './voice.js';
 import './chat.js';
 import './diagnosis.js';
