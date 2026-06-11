@@ -146,8 +146,8 @@ function startVadLoop() {
             const bars = rms > VAD_THRESHOLD ? '🟢' : '⚪';
             if (!speechDetectedAt && !isRecording) {
                 const baseText = state.isChatMode
-                    ? 'Q&A mode — Ask a question or say "next"'
-                    : 'Listening... (say: "next", "repeat", "more" or "stop")';
+                    ? 'Q&A mode — Ask a question, or say/tap "next"'
+                    : 'Listening... say or tap: "next", "repeat", "more"';
                 transcriptionEl.textContent = `${bars} ${baseText}`;
             }
         }
@@ -222,6 +222,7 @@ function startRecording() {
                     beginListening();
                     return;
                 }
+                showHeard(transcript);
                 setVgStatus(`You said: "${transcript}"`);
                 handleVoiceCommand(transcript);
             } catch (err) {
@@ -278,6 +279,8 @@ export async function toggleVoiceAssistant() {
     state.currentScenarioIndex = 0;
     state.isChatMode = false;
     state.messageHistory.length = 0;
+    hideHeard();
+    updateVoiceControlsUI();
 
     // Switch to dedicated voice guide screen
     const diagTitle = $('diagTitle');
@@ -311,6 +314,8 @@ export function stopVoiceAssistant() {
     }
     const tc = $('transcriptionCard');
     if (tc) tc.style.display = 'none';
+    hideHeard();
+    updateVoiceControlsUI();
 
     // Return to diagnosis screen
     switchScreen('diagnosisScreen', null, 2);
@@ -373,6 +378,26 @@ function setVgStatus(text) {
     if (tc) tc.textContent = text;
 }
 
+/** Show what the speech recognition actually understood */
+function showHeard(text) {
+    const box = $('vgHeard');
+    const el = $('vgHeardText');
+    if (!box || !el) return;
+    el.textContent = `"${text}"`;
+    box.style.display = 'block';
+}
+
+function hideHeard() {
+    const box = $('vgHeard');
+    if (box) box.style.display = 'none';
+}
+
+/** Keep the More button in sync with Q&A (chat) mode */
+function updateVoiceControlsUI() {
+    const btnMore = $('btnVcMore');
+    if (btnMore) btnMore.disabled = state.isChatMode;
+}
+
 /**
  * Plays TTS audio. After playback ends, switches to listening mode (VAD).
  * Reuses the single sharedAudio element to bypass iOS autoplay restrictions.
@@ -432,8 +457,8 @@ function playStepAudio(promptText) {
 function beginListening() {
     if (!state.isVoiceActive) return;
     const statusText = state.isChatMode
-        ? '🎤 Q&A mode — Ask a question or say "next"...'
-        : '🎤 Listening... (say: "next", "repeat", "more" or "stop")';
+        ? '🎤 Q&A mode — Ask a question, or say/tap "next"...'
+        : '🎤 Listening... say or tap: "next", "repeat", "more"';
     setVgStatus(statusText);
     startVadLoop();
 }
@@ -444,6 +469,7 @@ function handleVoiceCommand(transcript) {
     if (state.isChatMode) {
         if (t.includes('next')) {
             state.isChatMode = false;
+            updateVoiceControlsUI();
             $('transcriptionText').textContent = 'Continuing to next step...';
             state.currentScenarioIndex++;
             readScenarioStepByStep();
@@ -460,6 +486,7 @@ function handleVoiceCommand(transcript) {
         readScenarioStepByStep();
     } else if (t.includes('more')) {
         state.isChatMode = true;
+        updateVoiceControlsUI();
         const info = 'Help mode activated. Ask your question, or say next to continue.';
         $('transcriptionText').textContent = info;
         playStepAudio(info);
@@ -507,5 +534,20 @@ window.voiceCommand = function(cmd) {
     if (!state.isVoiceActive) return;
     cancelVadLoop();
     stopRecording(true);
+
+    if (state.isChatMode) {
+        if (cmd === 'more') {
+            // Already in help mode — just keep listening
+            beginListening();
+            return;
+        }
+        if (cmd === 'repeat') {
+            // Leave Q&A mode and re-read the current step
+            state.isChatMode = false;
+            updateVoiceControlsUI();
+            readScenarioStepByStep();
+            return;
+        }
+    }
     handleVoiceCommand(cmd);
 };

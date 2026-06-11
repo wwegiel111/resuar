@@ -356,6 +356,11 @@
     background: var(--hover-bg);
 }
 
+.voice-control-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
 .voice-control-stop {
     border-color: rgba(239, 68, 68, 0.3);
 }
