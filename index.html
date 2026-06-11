@@ -107,6 +107,38 @@
                 <button id="btnCprToggle" class="btn-action" style="background:var(--danger-color); color:white; width:100%; max-width:300px; padding:20px; font-size:1.2rem; border-radius:24px; box-shadow: 0 10px 20px rgba(239, 68, 68, 0.3);" onclick="toggleCpr()">
                     <i class="fas fa-play"></i> Start CPR
                 </button>
+                <button class="btn-recovery-entry" onclick="openRecoveryGuide()">
+                    <i class="fas fa-procedures"></i> Recovery Position Guide
+                </button>
+                <p class="recovery-entry-hint">
+                    If they start breathing normally, place them in the recovery position.
+                </p>
+            </div>
+        </div>
+
+        <!-- RECOVERY POSITION -->
+        <div id="recoveryScreen" class="screen">
+            <div class="header" style="position: relative;">
+                <button class="back-btn" onclick="switchScreen('cprScreen', null, -1)">
+                    <i class="fas fa-arrow-left"></i>
+                </button>
+                <span class="screen-title mobile-header-logo">Recovery Position</span>
+            </div>
+            <h2 class="screen-title desktop-title">Recovery Position</h2>
+            <div class="recovery-wrapper">
+                <div class="vg-progress" id="recoveryProgress"></div>
+                <p class="vg-step-label" id="recoveryStepLabel">STEP 1 OF 6</p>
+                <div class="recovery-illustration" id="recoveryIllustration"></div>
+                <h3 class="recovery-step-title" id="recoveryStepTitle">Loading...</h3>
+                <p class="recovery-step-sub" id="recoveryStepSub"></p>
+                <div class="recovery-nav">
+                    <button class="btn-action btn-recovery-prev" id="btnRecoveryPrev" onclick="prevRecoveryStep()">
+                        <i class="fas fa-arrow-left"></i> Back
+                    </button>
+                    <button class="btn-action btn-recovery-next" id="btnRecoveryNext" onclick="nextRecoveryStep()">
+                        Next <i class="fas fa-arrow-right"></i>
+                    </button>
+                </div>
             </div>
         </div>
 

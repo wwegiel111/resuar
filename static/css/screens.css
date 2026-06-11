@@ -70,6 +70,111 @@ h1 {
     box-shadow: 0 0 30px rgba(245, 158, 11, 0.2);
 }
 
+/* ---- Recovery position (entry button on CPR screen) ---- */
+.btn-recovery-entry {
+    width: 100%;
+    max-width: 300px;
+    margin-top: 16px;
+    padding: 16px;
+    background: var(--white-card);
+    color: var(--blue-card);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    transition: 0.2s;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.04);
+}
+
+.btn-recovery-entry:hover {
+    background: var(--hover-bg);
+    transform: translateY(-2px);
+}
+
+.recovery-entry-hint {
+    margin-top: 12px;
+    font-size: 0.85rem;
+    color: var(--text-muted);
+    max-width: 300px;
+}
+
+/* ---- Recovery position screen ---- */
+.recovery-wrapper {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    max-width: 600px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.recovery-illustration {
+    background: var(--white-card);
+    border: 1px solid var(--border-color);
+    border-radius: 24px;
+    padding: 14px;
+    margin-bottom: 20px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    animation: fadeIn 0.3s ease;
+}
+
+.recovery-illustration svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+
+.recovery-step-title {
+    font-size: 1.6rem;
+    font-weight: 700;
+    color: var(--text-dark);
+    margin-bottom: 8px;
+}
+
+.recovery-step-sub {
+    color: var(--text-muted);
+    font-size: 1.05rem;
+    line-height: 1.5;
+    margin-bottom: 24px;
+}
+
+.recovery-nav {
+    display: flex;
+    gap: 12px;
+    margin-top: auto;
+    padding-bottom: 10px;
+}
+
+.btn-recovery-prev {
+    background: var(--white-card);
+    color: var(--text-dark);
+    border: 1px solid var(--border-color);
+}
+
+.btn-recovery-prev:hover:not(:disabled) {
+    background: var(--hover-bg);
+}
+
+.btn-recovery-prev:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.btn-recovery-next {
+    background: var(--blue-card);
+    color: white;
+    box-shadow: 0 4px 10px rgba(10, 115, 182, 0.2);
+}
+
+.btn-recovery-next:hover {
+    background: var(--blue-hover);
+}
+
 /* ---- Scan screen ---- */
 .scan-content-wrapper {
     width: 100%;
