@@ -141,12 +141,16 @@ Generates or retrieves cached audio for a given prompt using text-to-speech.
 
 ```
 resuar/
-├── main.py                 # FastAPI application and core logic
-├── index.html             # Frontend interface
-├── requirements.txt       # Python dependencies
-├── scenarios.txt          # First aid scenario documentation
-├── recordings/            # Cached audio files
-└── README.md             # This file
+├── main.py              # FastAPI backend: AI analysis, chat, transcription, TTS, first aid scenarios (PL/EN)
+├── index.html           # App UI (mobile layout)
+├── phone.html           # Desktop preview: the app inside an iPhone frame
+├── static/
+│   ├── css/             # Styles
+│   └── js/              # Frontend modules (i18n.js holds the PL/EN UI texts)
+├── recordings/          # Cached TTS audio
+├── requirements.txt     # Python dependencies
+├── .python-version      # Python version used on Render
+└── README.md            # This file
 ```
 
 ## How It Works

@@ -2,7 +2,6 @@
  * Application entry point — imports all modules and initializes the app.
  */
 import { initScan } from './scan.js';
-import { updateProfile } from './profile.js';
 import { initI18n } from './i18n.js';
 
 // Side-effect imports: these modules register global handlers on import
@@ -17,5 +16,4 @@ import './diagnosis.js';
 document.addEventListener('DOMContentLoaded', () => {
     initI18n();
     initScan();
-    updateProfile();
 });

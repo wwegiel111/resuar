@@ -79,7 +79,7 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
-            background: #F4F5F7;
+            background: #F4F5F7;  /* the app's --bg-main, so the status bar blends in */
             /* Keep the rounded clip on the iframe in Safari */
             isolation: isolate;
         }
@@ -94,7 +94,6 @@
             font-size: 16px;
             font-weight: 600;
             color: #111827;
-            transition: background-color 0.3s ease, color 0.3s ease;
         }
 
         .status-icons {
@@ -135,9 +134,6 @@
             pointer-events: none;
             z-index: 2;
         }
-
-        .dark .status-bar { color: #F9FAFB; }
-        .dark .home-indicator { background: #F9FAFB; }
     </style>
 </head>
 <body>
@@ -148,9 +144,9 @@
     <span class="btn btn-vol-down"></span>
     <span class="btn btn-power"></span>
 
-    <div class="screen" id="screen">
+    <div class="screen">
         <div class="dynamic-island"></div>
-        <div class="status-bar" id="statusBar">
+        <div class="status-bar">
             <span id="clock">9:41</span>
             <span class="status-icons">
                 <i class="fas fa-signal"></i>
@@ -166,8 +162,6 @@
 
 <script>
     const phone = document.getElementById('phone');
-    const screen = document.getElementById('screen');
-    const statusBar = document.getElementById('statusBar');
     const frame = document.getElementById('app');
 
     // Scale the phone down on short screens so it always fits the window
@@ -191,28 +185,13 @@
     updateClock();
     setInterval(updateClock, 15000);
 
-    // Match the status bar to the app's theme (light/dark)
-    function syncTheme() {
-        const appBody = frame.contentDocument && frame.contentDocument.body;
-        if (!appBody) return;
-        // Read the theme variable, not background-color — that one is mid-transition here
-        const bg = getComputedStyle(appBody).getPropertyValue('--bg-main').trim();
-        statusBar.style.backgroundColor = bg;
-        screen.style.backgroundColor = bg;  // no light seam when the phone is scaled
-        screen.classList.toggle('dark', appBody.classList.contains('dark-mode'));
-    }
     // Keep the tab title in the app's language
     function syncTitle() {
         document.title = frame.contentDocument.title;
     }
 
     frame.addEventListener('load', () => {
-        syncTheme();
         syncTitle();
-        new MutationObserver(syncTheme).observe(frame.contentDocument.body, {
-            attributes: true,
-            attributeFilter: ['class'],
-        });
         new MutationObserver(syncTitle).observe(frame.contentDocument.querySelector('title'), {
             childList: true,
         });

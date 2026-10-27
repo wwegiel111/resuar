@@ -6,7 +6,7 @@ import { $, vibrate } from './dom.js';
 import { switchScreen } from './navigation.js';
 import { getLang, t } from './i18n.js';
 
-/* ---- Palette (CSS variables so dark mode just works) ---- */
+/* ---- Palette (app CSS variables) ---- */
 const BODY = 'var(--text-muted)';
 const ACTIVE = 'var(--blue-card)';
 const MOVE = 'var(--danger-color)';
