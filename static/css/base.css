@@ -32,6 +32,12 @@ body.dark-mode {
     --active-bg: #1E3A8A;
 }
 
+/* The theme variables live on <body>, so paint <html> dark too — otherwise its
+   light background shows through at edges (overscroll, scaled phone preview) */
+html:has(> body.dark-mode) {
+    background-color: #111827;
+}
+
 * {
     box-sizing: border-box;
     margin: 0;

@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RescuAR - AI First Aid</title>
+    <script>
+        // Desktop-only preview. On phones/tablets go straight to the real app.
+        if (!window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)').matches) {
+            location.replace('/');
+        }
+    </script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* iPhone 15 Pro: 393 x 852 pt logical screen */
+        :root {
+            --screen-w: 393px;
+            --screen-h: 852px;
+            --bezel: 12px;
+            --screen-radius: 55px;
+            --status-h: 54px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        html, body {
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Inter', sans-serif;
+        }
+
+        body {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background:
+                radial-gradient(circle at 20% 20%, rgba(10, 115, 182, 0.18), transparent 45%),
+                radial-gradient(circle at 80% 80%, rgba(229, 46, 46, 0.12), transparent 45%),
+                #0F172A;
+        }
+
+        .phone {
+            position: relative;
+            width: calc(var(--screen-w) + 2 * var(--bezel));
+            height: calc(var(--screen-h) + 2 * var(--bezel));
+            padding: var(--bezel);
+            border-radius: calc(var(--screen-radius) + var(--bezel));
+            background: #0B0B0F;
+            box-shadow:
+                0 0 0 2px #3A3A40,
+                0 0 0 4px #1C1C21,
+                0 40px 80px rgba(0, 0, 0, 0.55);
+            transform-origin: center center;
+            flex: none;
+        }
+
+        /* Side buttons */
+        .btn {
+            position: absolute;
+            width: 4px;
+            background: #2A2A30;
+            border-radius: 2px;
+        }
+        .btn-action { left: -6px; top: 120px; height: 32px; }
+        .btn-vol-up { left: -6px; top: 180px; height: 60px; }
+        .btn-vol-down { left: -6px; top: 252px; height: 60px; }
+        .btn-power { right: -6px; top: 210px; height: 96px; }
+
+        .screen {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: var(--screen-radius);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            background: #F4F5F7;
+            /* Keep the rounded clip on the iframe in Safari */
+            isolation: isolate;
+        }
+
+        .status-bar {
+            height: var(--status-h);
+            flex: none;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 14px 32px 0 40px;
+            font-size: 16px;
+            font-weight: 600;
+            color: #111827;
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .status-icons {
+            display: flex;
+            gap: 6px;
+            font-size: 14px;
+        }
+
+        .dynamic-island {
+            position: absolute;
+            top: 11px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 125px;
+            height: 37px;
+            border-radius: 20px;
+            background: #000;
+            z-index: 2;
+        }
+
+        iframe {
+            flex: 1;
+            width: 100%;
+            border: 0;
+            display: block;
+        }
+
+        .home-indicator {
+            position: absolute;
+            bottom: 8px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 134px;
+            height: 5px;
+            border-radius: 3px;
+            background: #111827;
+            opacity: 0.85;
+            pointer-events: none;
+            z-index: 2;
+        }
+
+        .dark .status-bar { color: #F9FAFB; }
+        .dark .home-indicator { background: #F9FAFB; }
+    </style>
+</head>
+<body>
+
+<div class="phone" id="phone">
+    <span class="btn btn-action"></span>
+    <span class="btn btn-vol-up"></span>
+    <span class="btn btn-vol-down"></span>
+    <span class="btn btn-power"></span>
+
+    <div class="screen" id="screen">
+        <div class="dynamic-island"></div>
+        <div class="status-bar" id="statusBar">
+            <span id="clock">9:41</span>
+            <span class="status-icons">
+                <i class="fas fa-signal"></i>
+                <i class="fas fa-wifi"></i>
+                <i class="fas fa-battery-full"></i>
+            </span>
+        </div>
+        <iframe id="app" src="/" title="RescuAR"
+                allow="camera; microphone; autoplay; clipboard-write; fullscreen"></iframe>
+        <div class="home-indicator"></div>
+    </div>
+</div>
+
+<script>
+    const phone = document.getElementById('phone');
+    const screen = document.getElementById('screen');
+    const statusBar = document.getElementById('statusBar');
+    const frame = document.getElementById('app');
+
+    // Scale the phone down on short screens so it always fits the window
+    function fitPhone() {
+        const margin = 48;
+        const scale = Math.min(
+            1,
+            (window.innerHeight - margin) / phone.offsetHeight,
+            (window.innerWidth - margin) / phone.offsetWidth
+        );
+        phone.style.transform = `scale(${scale})`;
+    }
+    window.addEventListener('resize', fitPhone);
+    fitPhone();
+
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').textContent =
+            `${now.getHours()}:${String(now.getMinutes()).padStart(2, '0')}`;
+    }
+    updateClock();
+    setInterval(updateClock, 15000);
+
+    // Match the status bar to the app's theme (light/dark)
+    function syncTheme() {
+        const appBody = frame.contentDocument && frame.contentDocument.body;
+        if (!appBody) return;
+        // Read the theme variable, not background-color — that one is mid-transition here
+        const bg = getComputedStyle(appBody).getPropertyValue('--bg-main').trim();
+        statusBar.style.backgroundColor = bg;
+        screen.style.backgroundColor = bg;  // no light seam when the phone is scaled
+        screen.classList.toggle('dark', appBody.classList.contains('dark-mode'));
+    }
+    frame.addEventListener('load', () => {
+        syncTheme();
+        new MutationObserver(syncTheme).observe(frame.contentDocument.body, {
+            attributes: true,
+            attributeFilter: ['class'],
+        });
+    });
+</script>
+
+</body>
+</html>

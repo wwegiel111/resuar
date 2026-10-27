@@ -4,13 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>RescuAR - AI First Aid</title>
+    <script>
+        // On desktop, show the app inside an iPhone frame (/phone loads this page in an iframe).
+        // Add ?desktop=1 to the URL to get the full desktop layout instead.
+        if (window.self === window.top
+            && !new URLSearchParams(location.search).has('desktop')
+            && window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)').matches) {
+            location.replace('/phone');
+        }
+    </script>
 
     <!-- Fonts & Icons -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <!-- Stylesheets -->
-    <link rel="stylesheet" href="/static/css/base.css?v=4">
+    <link rel="stylesheet" href="/static/css/base.css?v=5">
     <link rel="stylesheet" href="/static/css/layout.css?v=4">
     <link rel="stylesheet" href="/static/css/components.css?v=4">
     <link rel="stylesheet" href="/static/css/screens.css?v=4">

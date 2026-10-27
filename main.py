@@ -475,6 +475,16 @@ def home():
         raise HTTPException(status_code=500, detail="index.html not found")
 
 
+@app.get("/phone", response_class=HTMLResponse)
+def phone():
+    """Desktop preview: the app inside an iPhone frame (index.html redirects here)."""
+    try:
+        with open("phone.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except FileNotFoundError:
+        raise HTTPException(status_code=500, detail="phone.html not found")
+
+
 # ---------------------------------------------------------------------------
 # [1] FILE VALIDATION + [4][5] SEVERITY DETECTION + EXPANDED WOUND TYPES
 # ---------------------------------------------------------------------------
