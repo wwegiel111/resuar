@@ -783,25 +783,31 @@ class ChatRequest(BaseModel):
     lang: str = DEFAULT_API_LANG
 
 
-@app.get("/", response_class=HTMLResponse)
-def home():
+def serve_page(filename: str) -> str:
+    """Read an HTML page and point its asset URLs at the versioned path (see ASSET_VERSION)."""
     try:
-        with open("index.html", "r", encoding="utf-8") as f:
+        with open(filename, "r", encoding="utf-8") as f:
             html = f.read()
     except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="index.html not found")
-    # Serve assets from the versioned path (see ASSET_VERSION)
+        raise HTTPException(status_code=500, detail=f"{filename} not found")
     return html.replace('"/static/', f'"/static/{ASSET_VERSION}/')
+
+
+@app.get("/", response_class=HTMLResponse)
+def home():
+    return serve_page("index.html")
 
 
 @app.get("/phone", response_class=HTMLResponse)
 def phone():
     """Desktop preview: the app inside an iPhone frame (index.html redirects here)."""
-    try:
-        with open("phone.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except FileNotFoundError:
-        raise HTTPException(status_code=500, detail="phone.html not found")
+    return serve_page("phone.html")
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon():
+    # Browsers request /favicon.ico on their own; the pages also link the SVG icon
+    return FileResponse(os.path.join(STATIC_DIR, "icons", "favicon.ico"), media_type="image/x-icon")
 
 
 # ---------------------------------------------------------------------------

@@ -146,6 +146,7 @@ resuar/
 ├── phone.html           # Desktop preview: the app inside an iPhone frame
 ├── static/
 │   ├── css/             # Styles
+│   ├── icons/           # Favicon (SVG + ICO) and the iOS home screen icon
 │   └── js/              # Frontend modules (i18n.js holds the PL/EN UI texts)
 ├── recordings/          # Cached TTS audio
 ├── requirements.txt     # Python dependencies
