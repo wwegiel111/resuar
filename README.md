@@ -214,9 +214,6 @@ Contributions are welcome! Please ensure:
 - New features include appropriate error handling
 - API changes are documented
 
-## License
-
-[Add your license information here]
 
 ## Support
 
