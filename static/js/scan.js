@@ -6,6 +6,7 @@ import { state } from './state.js';
 import { analyzeImage } from './api.js';
 import { switchScreen } from './navigation.js';
 import { populateDiagnosisScreen } from './diagnosis.js';
+import { t } from './i18n.js';
 
 let cameraUI, imagePreview, analyzeBtn, btnTakePic, btnGallery, resultPanel, loaderOverlay;
 
@@ -59,10 +60,10 @@ export async function analyze() {
 
         if (data.diagnosis) {
             state.isProcessActive = true;
-            populateDiagnosisScreen(data.diagnosis, data.scenario_array || [], data.severity || 'Moderate');
+            populateDiagnosisScreen(data);
             switchScreen('diagnosisScreen', null, 2);
         } else {
-            showError(data.error || 'Unknown error');
+            showError(data.error || t('scan.unknownError'));
         }
     } catch (error) {
         loaderOverlay.style.display = 'none';
@@ -70,7 +71,7 @@ export async function analyze() {
         btnGallery.style.display = 'flex';
         analyzeBtn.style.display = 'none';
         analyzeBtn.disabled = false;
-        showError(error.message || 'Server connection error.');
+        showError(error.message || t('scan.connectionError'));
     }
 }
 

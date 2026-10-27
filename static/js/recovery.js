@@ -4,6 +4,7 @@
  */
 import { $, vibrate } from './dom.js';
 import { switchScreen } from './navigation.js';
+import { getLang, t } from './i18n.js';
 
 /* ---- Palette (CSS variables so dark mode just works) ---- */
 const BODY = 'var(--text-muted)';
@@ -73,11 +74,29 @@ const BREATH_MARKS = (c = ACTIVE) => `
     <path d="M 54 150 q -9 8 0 16" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="round"/>
     <path d="M 42 146 q -12 12 0 24" fill="none" stroke="${c}" stroke-width="3.5" stroke-linecap="round"/>`;
 
-/* ---- Guide steps ---- */
+/* ---- Guide steps (texts per language, same order as RECOVERY_STEPS) ---- */
+const RECOVERY_TEXT = {
+    en: [
+        { title: 'Arm at a Right Angle', sub: 'Kneel beside the person. Place the arm nearest to you at a right angle to their body, elbow bent, palm facing up.' },
+        { title: 'Hand Against the Cheek', sub: 'Bring the far arm across the chest and hold the back of their hand against the cheek nearest to you.' },
+        { title: 'Bend the Far Knee', sub: 'With your other hand, pull the far knee up so the leg is bent and the foot stays flat on the ground.' },
+        { title: 'Roll Towards You', sub: 'Keep their hand pressed against the cheek. Pull the bent knee towards you to roll them gently onto their side.' },
+        { title: 'Open the Airway', sub: 'Tilt the head gently back so the airway stays open. Adjust the hand under the cheek to keep the head tilted.' },
+        { title: 'Monitor & Call 112', sub: 'Check their breathing regularly until help arrives. If no one has called yet, call 112 now.' },
+    ],
+    pl: [
+        { title: 'Ręka pod kątem prostym', sub: 'Uklęknij obok poszkodowanego. Bliższą ci rękę ułóż pod kątem prostym do jego ciała, zgiętą w łokciu, dłonią do góry.' },
+        { title: 'Dłoń przy policzku', sub: 'Dalszą rękę przełóż w poprzek klatki piersiowej i przytrzymaj grzbiet jego dłoni przy policzku bliższym tobie.' },
+        { title: 'Zegnij dalszą nogę', sub: 'Drugą ręką podciągnij dalsze kolano tak, aby noga była zgięta, a stopa płasko oparta o podłoże.' },
+        { title: 'Obróć do siebie', sub: 'Cały czas przytrzymuj dłoń przy policzku. Pociągnij zgięte kolano do siebie i delikatnie obróć poszkodowanego na bok.' },
+        { title: 'Udrożnij drogi oddechowe', sub: 'Delikatnie odchyl głowę do tyłu, aby drogi oddechowe pozostały drożne. Popraw dłoń pod policzkiem, by utrzymać głowę w tej pozycji.' },
+        { title: 'Obserwuj i dzwoń na 112', sub: 'Regularnie sprawdzaj oddech do przyjazdu pomocy. Jeśli nikt jeszcze nie zadzwonił, zadzwoń teraz pod 112.' },
+    ],
+};
+
+/* ---- Guide steps: illustrations ---- */
 const RECOVERY_STEPS = [
     {
-        title: 'Arm at a Right Angle',
-        sub: 'Kneel beside the person. Place the arm nearest to you at a right angle to their body, elbow bent, palm facing up.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             TD_LEG_FAR + TD_LEG_NEAR + TD_TORSO + TD_ARM_FAR + TD_HEAD() +
             TD_ARM_NEAR_BENT(ACTIVE) +
@@ -86,8 +105,6 @@ const RECOVERY_STEPS = [
             SVG_CLOSE,
     },
     {
-        title: 'Hand Against the Cheek',
-        sub: 'Bring the far arm across the chest and hold the back of their hand against the cheek nearest to you.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             TD_LEG_FAR + TD_LEG_NEAR + TD_TORSO + TD_HEAD() +
             TD_ARM_NEAR_BENT() +
@@ -97,8 +114,6 @@ const RECOVERY_STEPS = [
             SVG_CLOSE,
     },
     {
-        title: 'Bend the Far Knee',
-        sub: 'With your other hand, pull the far knee up so the leg is bent and the foot stays flat on the ground.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             TD_LEG_NEAR + TD_TORSO + TD_HEAD() +
             TD_ARM_NEAR_BENT() + TD_ARM_FAR_CHEEK() +
@@ -108,8 +123,6 @@ const RECOVERY_STEPS = [
             SVG_CLOSE,
     },
     {
-        title: 'Roll Towards You',
-        sub: 'Keep their hand pressed against the cheek. Pull the bent knee towards you to roll them gently onto their side.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             TD_LEG_NEAR + TD_TORSO + TD_HEAD() +
             TD_ARM_NEAR_BENT() + TD_ARM_FAR_CHEEK() + TD_LEG_FAR_BENT() +
@@ -118,8 +131,6 @@ const RECOVERY_STEPS = [
             SVG_CLOSE,
     },
     {
-        title: 'Open the Airway',
-        sub: 'Tilt the head gently back so the airway stays open. Adjust the hand under the cheek to keep the head tilted.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             SIDE_FIGURE(ACTIVE) +
             `<path d="M 56 132 Q 86 110 118 134" fill="none" stroke="${MOVE}"
@@ -127,8 +138,6 @@ const RECOVERY_STEPS = [
             SVG_CLOSE,
     },
     {
-        title: 'Monitor & Call 112',
-        sub: 'Check their breathing regularly until help arrives. If no one has called yet, call 112 now.',
         svg: SVG_OPEN + ARROW_DEFS + FLOOR_MAT +
             SIDE_FIGURE() + BREATH_MARKS() +
             `<rect x="280" y="34" width="88" height="46" rx="15" fill="${MOVE}"/>
@@ -142,12 +151,13 @@ let currentStep = 0;
 
 function renderRecoveryStep() {
     const step = RECOVERY_STEPS[currentStep];
+    const text = RECOVERY_TEXT[getLang()][currentStep];
     const total = RECOVERY_STEPS.length;
 
     $('recoveryIllustration').innerHTML = step.svg;
-    $('recoveryStepTitle').textContent = step.title;
-    $('recoveryStepSub').textContent = step.sub;
-    $('recoveryStepLabel').textContent = `STEP ${currentStep + 1} OF ${total}`;
+    $('recoveryStepTitle').textContent = text.title;
+    $('recoveryStepSub').textContent = text.sub;
+    $('recoveryStepLabel').textContent = t('recovery.stepLabel', { n: currentStep + 1, total });
 
     $('recoveryProgress').innerHTML = RECOVERY_STEPS.map((_, i) => {
         const cls = i < currentStep ? 'done' : i === currentStep ? 'active' : '';
@@ -156,8 +166,8 @@ function renderRecoveryStep() {
 
     $('btnRecoveryPrev').disabled = currentStep === 0;
     $('btnRecoveryNext').innerHTML = currentStep === total - 1
-        ? '<i class="fas fa-check"></i> Done'
-        : 'Next <i class="fas fa-arrow-right"></i>';
+        ? `<i class="fas fa-check"></i> ${t('recovery.done')}`
+        : `${t('recovery.next')} <i class="fas fa-arrow-right"></i>`;
 }
 
 export function openRecoveryGuide() {
@@ -182,6 +192,10 @@ export function prevRecoveryStep() {
     currentStep--;
     renderRecoveryStep();
 }
+
+window.addEventListener('langchange', () => {
+    if ($('recoveryScreen').classList.contains('active')) renderRecoveryStep();
+});
 
 // Expose to global scope for inline onclick handlers
 window.openRecoveryGuide = openRecoveryGuide;

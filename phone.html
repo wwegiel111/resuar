@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="pl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>RescuAR - AI First Aid</title>
+    <title>RescuAR – Pierwsza pomoc z AI</title>
     <script>
         // Desktop-only preview. On phones/tablets go straight to the real app.
         if (!window.matchMedia('(min-width: 1024px) and (hover: hover) and (pointer: fine)').matches) {
@@ -201,11 +201,20 @@
         screen.style.backgroundColor = bg;  // no light seam when the phone is scaled
         screen.classList.toggle('dark', appBody.classList.contains('dark-mode'));
     }
+    // Keep the tab title in the app's language
+    function syncTitle() {
+        document.title = frame.contentDocument.title;
+    }
+
     frame.addEventListener('load', () => {
         syncTheme();
+        syncTitle();
         new MutationObserver(syncTheme).observe(frame.contentDocument.body, {
             attributes: true,
             attributeFilter: ['class'],
+        });
+        new MutationObserver(syncTitle).observe(frame.contentDocument.querySelector('title'), {
+            childList: true,
         });
     });
 </script>

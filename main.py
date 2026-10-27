@@ -16,7 +16,8 @@ import os
 import re
 import io
 import json
-from fastapi import FastAPI, UploadFile, File, Request, HTTPException
+import hashlib
+from fastapi import FastAPI, UploadFile, File, Form, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
@@ -81,9 +82,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+@app.middleware("http")
+async def revalidate_static(request: Request, call_next):
+    """
+    Without explicit caching headers browsers cache JS heuristically and may
+    skip asking the server for hours. no-cache makes them revalidate every
+    time (a cheap 304 when unchanged), so edits show up without a hard refresh.
+    """
+    response = await call_next(request)
+    if request.url.path.startswith("/static/") or request.url.path in ("/", "/phone"):
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 # Mount static assets
 STATIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+def compute_asset_version() -> str:
+    """Hash of all files in static/ — changes whenever any CSS/JS file changes."""
+    digest = hashlib.sha1()
+    for root, dirs, files in os.walk(STATIC_DIR):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            digest.update(os.path.relpath(path, STATIC_DIR).encode("utf-8"))
+            with open(path, "rb") as f:
+                digest.update(f.read())
+    return digest.hexdigest()[:12]
+
+
+# index.html is served with asset URLs under /static/<version>/ (see home()).
+# JS modules import each other by relative path, so every module gets a new
+# URL whenever any asset changes — a browser can't mix modules cached from an
+# older deploy with new ones (old cache entries are simply never requested).
+ASSET_VERSION = compute_asset_version() if os.path.isdir(STATIC_DIR) else "dev"
+
 if os.path.isdir(STATIC_DIR):
+    # The versioned mount must come first: "/static" would otherwise match it
+    app.mount(f"/static/{ASSET_VERSION}", StaticFiles(directory=STATIC_DIR), name="static-versioned")
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -430,14 +467,277 @@ scenario_dict = {
     },
 }
 
+# Polish scenarios — same keys and the same number of steps as scenario_dict,
+# so the voice assistant can switch language mid-procedure. The steps are read
+# aloud by TTS, so ranges are written out ("od 10 do 20 minut") and abbreviations
+# are avoided.
+scenario_dict_pl = {
+    "Burn": {
+        "Mild": [
+            "Schładzaj oparzenie chłodną (nie lodowatą) bieżącą wodą przez 10 do 20 minut.",
+            "Nie przykładaj do oparzenia lodu, masła ani pasty do zębów.",
+            "Po schłodzeniu nałóż żel z aloesem lub balsam nawilżający.",
+            "W razie potrzeby przykryj oparzenie luźno jałowym, nieprzywierającym opatrunkiem.",
+            "W razie potrzeby przyjmij lek przeciwbólowy bez recepty, na przykład ibuprofen.",
+        ],
+        "Moderate": [
+            "Schładzaj oparzone miejsce chłodną wodą przez co najmniej 20 minut. Czysty, zimny, wilgotny ręcznik pomoże złagodzić ból.",
+            "Uspokój poszkodowanego i dodaj mu otuchy.",
+            "Po schłodzeniu przykryj oparzenie suchym, jałowym opatrunkiem lub czystym materiałem.",
+            "Chroń oparzone miejsce przed uciskiem i tarciem.",
+            "Ibuprofen lub paracetamol bez recepty mogą złagodzić ból i obrzęk.",
+            "Nie podawaj aspiryny dzieciom poniżej 12 lat.",
+            "Nie przekłuwaj pęcherzy — chronią przed zakażeniem.",
+            "Zgłoś się do lekarza, jeśli pęcherze są większe niż 7 centymetrów albo znajdują się na twarzy, dłoniach lub stawach.",
+        ],
+        "Severe": [
+            "NATYCHMIAST ZADZWOŃ POD NUMER ALARMOWY 112. To oparzenie wymaga profesjonalnej pomocy medycznej.",
+            "NIE zdejmuj ubrania przyklejonego do oparzenia.",
+            "NIE zanurzaj rozległych, ciężkich oparzeń w wodzie — może to wywołać wstrząs.",
+            "Przykryj oparzone miejsce luźno czystym, chłodnym, wilgotnym opatrunkiem lub materiałem.",
+            "Jeśli to możliwe, unieś oparzoną część ciała powyżej poziomu serca.",
+            "Obserwuj objawy wstrząsu: bladą skórę, osłabienie, szybkie tętno.",
+            "Chroń poszkodowanego przed wychłodzeniem — okryj kocem nieoparzone części ciała.",
+            "Nie nakładaj na ciężkie oparzenia żadnych maści ani kremów.",
+        ],
+    },
+    "Cut": {
+        "Mild": [
+            "Przed opatrzeniem rany umyj ręce mydłem.",
+            "Przepłucz ranę czystą bieżącą wodą przez minutę lub dwie.",
+            "Jeśli rana lekko krwawi, delikatnie uciśnij ją czystym materiałem.",
+            "Nałóż cienką warstwę maści z antybiotykiem.",
+            "Przykryj ranę plastrem z opatrunkiem lub jałową gazą.",
+        ],
+        "Moderate": [
+            "Dokładnie umyj ręce mydłem lub środkiem antybakteryjnym.",
+            "Aby zatamować krwawienie, mocno uciskaj ranę czystym materiałem przez 10 do 15 minut.",
+            "Gdy krwawienie ustanie, dokładnie umyj ranę łagodnym mydłem i wodą.",
+            "Delikatnie usuń widoczne zanieczyszczenia czystą pęsetą.",
+            "Nałóż maść z antybiotykiem i przykryj ranę jałowym opatrunkiem.",
+            "Zmieniaj opatrunek codziennie i obserwuj objawy zakażenia: zaczerwienienie, obrzęk, ocieplenie skóry.",
+            "Rozważ szczepienie przeciw tężcowi, jeśli ostatnie było ponad 5 lat temu.",
+        ],
+        "Severe": [
+            "Przy głębokiej ranie z obfitym krwawieniem NATYCHMIAST ZADZWOŃ POD NUMER ALARMOWY 112.",
+            "Uciskaj ranę mocno i bez przerwy czystym materiałem. NIE zdejmuj go, nawet jeśli przesiąknie krwią — dokładaj kolejne warstwy.",
+            "Jeśli to możliwe, unieś zranioną część ciała powyżej poziomu serca.",
+            "Jeśli krwawienie nie ustaje po 15 minutach ucisku, to stan nagły — potrzebna jest pilna pomoc medyczna.",
+            "NIE próbuj oczyszczać silnie krwawiącej rany.",
+            "Utrzymuj poszkodowanego w pozycji leżącej i uspokajaj go, aby zapobiec wstrząsowi.",
+            "Jeśli w ranie tkwi jakiś przedmiot, NIE wyjmuj go.",
+        ],
+    },
+    "Bruise": {
+        "Mild": [
+            "Przyłóż zimny okład lub lód owinięty w materiał na 10 do 15 minut.",
+            "Oszczędzaj stłuczone miejsce i chroń je przed kolejnymi uderzeniami.",
+            "Po 48 godzinach możesz stosować ciepłe okłady, które przyspieszą gojenie.",
+            "W razie potrzeby pomoże lek przeciwbólowy bez recepty.",
+        ],
+        "Moderate": [
+            "Przez pierwsze 48 godzin kilka razy dziennie przykładaj lód owinięty w materiał, za każdym razem na 15 do 20 minut.",
+            "Gdy to możliwe, unieś stłuczone miejsce powyżej poziomu serca.",
+            "Oszczędzaj to miejsce i unikaj czynności, które mogą pogorszyć uraz.",
+            "Na ból i obrzęk przyjmij ibuprofen. Unikaj aspiryny, bo może nasilać krwawienie.",
+            "Po 48 godzinach przejdź na ciepłe okłady, które poprawią krążenie i przyspieszą gojenie.",
+            "Zgłoś się do lekarza, jeśli po 2 tygodniach siniak nie zaczyna znikać.",
+        ],
+        "Severe": [
+            "Zgłoś się do lekarza — rozległe stłuczenie może oznaczać krwawienie wewnętrzne lub złamanie.",
+            "Przykładaj lód owinięty w materiał, za każdym razem na 20 minut.",
+            "NIE masuj stłuczonego miejsca.",
+            "Obserwuj objawy zespołu ciasnoty przedziałów powięziowych: narastający ból, drętwienie lub obrzęk.",
+            "Jeśli stłuczenie dotyczy głowy lub brzucha, natychmiast zgłoś się do lekarza.",
+            "Utrzymuj to miejsce uniesione i unieruchomione.",
+        ],
+    },
+    "Scrape": {
+        "Mild": [
+            "Delikatnie przepłucz otarcie czystą bieżącą wodą.",
+            "Osusz skórę, delikatnie przykładając czysty materiał.",
+            "Nałóż cienką warstwę maści z antybiotykiem.",
+            "Jeśli to miejsce może się zabrudzić, przykryj je opatrunkiem.",
+        ],
+        "Moderate": [
+            "Dokładnie myj otarte miejsce łagodnym mydłem i czystą wodą przez 2 do 3 minut.",
+            "Delikatnie usuń brud i zanieczyszczenia — w razie potrzeby użyj czystej pęsety.",
+            "Nałóż maść z antybiotykiem, aby zapobiec zakażeniu.",
+            "Przykryj otarcie jałowym, nieprzywierającym opatrunkiem.",
+            "Zmieniaj opatrunek codziennie. Rana goi się szybciej, gdy jest lekko wilgotna.",
+            "Obserwuj objawy zakażenia: narastające zaczerwienienie, ocieplenie, obrzęk lub ropę.",
+        ],
+        "Severe": [
+            "Przy rozległych lub głębokich otarciach, na przykład po upadku na asfalt, zgłoś się do lekarza.",
+            "Przepłucz otarcie czystą wodą, ale nie szoruj go.",
+            "Przykryj otarcie czystym, wilgotnym opatrunkiem.",
+            "Głębokie otarcia mogą wymagać profesjonalnego oczyszczenia, aby nie doszło do zakażenia.",
+            "Jeśli szczepienie przeciw tężcowi nie jest aktualne, może być potrzebna dawka przypominająca.",
+            "Przez kilka następnych dni obserwuj, czy nie pojawiają się objawy zakażenia.",
+        ],
+    },
+    "Puncture": {
+        "Mild": [
+            "Pozwól ranie lekko pokrwawić — to pomaga wypłukać bakterie.",
+            "Umyj to miejsce mydłem i czystą wodą.",
+            "Nałóż maść z antybiotykiem i przykryj ranę opatrunkiem.",
+            "Przez kilka następnych dni obserwuj, czy nie pojawiają się objawy zakażenia.",
+            "Sprawdź, czy masz aktualne szczepienie przeciw tężcowi.",
+        ],
+        "Moderate": [
+            "Pozwól na niewielkie krwawienie — w naturalny sposób oczyszcza ranę.",
+            "Dokładnie myj ranę mydłem i wodą przez kilka minut.",
+            "NIE próbuj zamykać rany kłutej — wydzielina musi mieć ujście.",
+            "Nałóż maść z antybiotykiem i załóż luźny opatrunek.",
+            "W razie potrzeby zgłoś się do lekarza po dawkę przypominającą szczepionki przeciw tężcowi.",
+            "Uważnie obserwuj objawy zakażenia: szerzące się zaczerwienienie, gorączkę, czerwone smugi biegnące od rany.",
+        ],
+        "Severe": [
+            "Przy głębokiej ranie kłutej ZADZWOŃ POD NUMER ALARMOWY 112.",
+            "NIE wyjmuj przedmiotu, który wciąż tkwi w ranie.",
+            "Aby opanować krwawienie, uciskaj wokół przedmiotu, a nie na niego.",
+            "Unieruchom wbity przedmiot, obkładając go grubymi opatrunkami.",
+            "Dopilnuj, aby poszkodowany się nie ruszał, i uspokajaj go.",
+            "Głębokie rany kłute klatki piersiowej, brzucha lub szyi bezpośrednio zagrażają życiu.",
+        ],
+    },
+    "Sprain": {
+        "Mild": [
+            "Zastosuj cztery zasady: odpoczynek, lód, ucisk i uniesienie.",
+            "Przez pierwsze 48 godzin przykładaj lód na 15 do 20 minut co 2 do 3 godzin.",
+            "Załóż bandaż elastyczny, który będzie delikatnie uciskał.",
+            "Oszczędzaj staw i nie obciążaj go.",
+            "Pomocny może być lek przeciwzapalny bez recepty.",
+        ],
+        "Moderate": [
+            "Od razu przyłóż lód: 20 minut z lodem, 20 minut przerwy, przez pierwsze 48 do 72 godzin.",
+            "Załóż bandaż uciskowy, aby zmniejszyć obrzęk, ale nie za ciasno.",
+            "Jak najczęściej trzymaj urażoną kończynę powyżej poziomu serca.",
+            "Nie obciążaj kończyny — przy urazie kostki lub kolana używaj kul.",
+            "Przyjmuj lek przeciwzapalny, na przykład ibuprofen, zgodnie z ulotką.",
+            "Zgłoś się do lekarza, jeśli w ogóle nie możesz obciążyć kończyny albo obrzęk jest duży.",
+            "Po 48 godzinach możesz zacząć delikatne ćwiczenia zakresu ruchu.",
+        ],
+        "Severe": [
+            "Natychmiast zgłoś się do lekarza — przy ciężkim skręceniu więzadła mogą być zerwane.",
+            "Unieruchom staw w zastanej pozycji. Nie próbuj go prostować.",
+            "Przyłóż lód owinięty w materiał, aby zmniejszyć obrzęk.",
+            "W ogóle NIE obciążaj urażonego miejsca.",
+            "Unieś urażone miejsce powyżej poziomu serca.",
+            "Ciężkie skręcenie bywa równie poważne jak złamanie — może być potrzebne prześwietlenie.",
+        ],
+    },
+    "Fracture": {
+        "Mild": [
+            "Jeśli podejrzewasz pęknięcie kości, unieruchom to miejsce.",
+            "Przyłóż lód owinięty w materiał na 15 do 20 minut.",
+            "Nie obciążaj miejsca podejrzanego o złamanie.",
+            "Zgłoś się do lekarza na prześwietlenie — nawet niewielkie złamanie wymaga leczenia.",
+            "Na czas transportu unieruchom to miejsce szyną lub temblakiem.",
+        ],
+        "Moderate": [
+            "WEZWIJ POMOC MEDYCZNĄ. Złamanie wymaga profesjonalnego leczenia.",
+            "NIE próbuj nastawiać kości ani wciskać jej z powrotem.",
+            "Unieruchom kończynę powyżej i poniżej miejsca podejrzanego złamania.",
+            "Przyłóż lód owinięty w materiał, aby zmniejszyć obrzęk.",
+            "Jeśli przy złamaniu jest otwarta rana, przykryj ją czystym opatrunkiem.",
+            "Kontroluj krążenie poniżej urazu — sprawdzaj, czy nie ma drętwienia, chłodu lub sinego zabarwienia skóry.",
+            "Do przyjazdu pomocy dopilnuj, aby poszkodowany się nie ruszał i było mu wygodnie.",
+        ],
+        "Severe": [
+            "NATYCHMIAST ZADZWOŃ POD NUMER ALARMOWY 112.",
+            "NIE przenoś poszkodowanego, chyba że grozi mu bezpośrednie niebezpieczeństwo.",
+            "NIE próbuj prostować ani nastawiać kończyny.",
+            "Tamuj krwawienie, delikatnie uciskając wokół miejsca złamania, a nie na nie.",
+            "Rany przy złamaniu otwartym przykryj jałowym opatrunkiem.",
+            "Unieruchom to miejsce w zastanej pozycji, używając sztywnych materiałów jako szyny.",
+            "Obserwuj objawy wstrząsu: bladą skórę, przyspieszony oddech, splątanie.",
+            "Do przyjazdu służb ratunkowych chroń poszkodowanego przed wychłodzeniem i uspokajaj go.",
+        ],
+    },
+    "Bite": {
+        "Mild": [
+            "Dokładnie myj miejsce ugryzienia mydłem i wodą przez 5 minut.",
+            "Nałóż maść z antybiotykiem.",
+            "Przykryj ranę czystym opatrunkiem.",
+            "Przez kilka następnych dni obserwuj, czy nie pojawiają się objawy zakażenia.",
+            "Zapamiętaj, jakie zwierzę cię ugryzło — ta informacja przyda się lekarzowi.",
+        ],
+        "Moderate": [
+            "Dokładnie myj ranę mydłem pod bieżącą wodą przez co najmniej 5 minut.",
+            "Jeśli rana krwawi, mocno uciśnij ją czystym materiałem.",
+            "Nałóż maść z antybiotykiem i przykryj ranę jałowym opatrunkiem.",
+            "Zgłoś się do lekarza — może być potrzebny antybiotyk lub dawka przypominająca szczepionki przeciw tężcowi.",
+            "Jeśli ugryzło cię zwierzę, spróbuj ustalić, jakie — to ważne przy ocenie ryzyka wścieklizny.",
+            "Obserwuj objawy zakażenia: narastający ból, zaczerwienienie, obrzęk, gorączkę.",
+        ],
+        "Severe": [
+            "Przy ciężkim ugryzieniu z obfitym krwawieniem ZADZWOŃ POD NUMER ALARMOWY 112.",
+            "Mocno uciskaj ranę, aby opanować krwawienie.",
+            "NIE próbuj zamykać rany — rany po ugryzieniu bardzo łatwo ulegają zakażeniu.",
+            "Jeśli doszło do odgryzienia części ciała, owiń ją w czysty, wilgotny materiał i zabierz do szpitala.",
+            "Każde ugryzienie przez zwierzę, które przerwało skórę, wymaga oceny ryzyka wścieklizny.",
+            "Ugryzienie przez człowieka, które przerwało skórę, także wymaga pomocy lekarza ze względu na ryzyko zakażenia.",
+        ],
+    },
+}
+
+# ============================================================================
+# LANGUAGES — the app runs in Polish by default; English stays available
+# ============================================================================
+SCENARIOS = {"en": scenario_dict, "pl": scenario_dict_pl}
+DEFAULT_API_LANG = "en"  # API default kept for backward compatibility; the app always sends lang
+
+
+def normalize_lang(lang: str) -> str:
+    """Return a supported language code, falling back to the API default."""
+    lang = (lang or "").strip().lower()
+    return lang if lang in SCENARIOS else DEFAULT_API_LANG
+
+
+# User-facing messages returned by the API
+MESSAGES = {
+    "en": {
+        "invalid_type": "Invalid file type: {ctype}. Allowed: {allowed}",
+        "invalid_ext": "Invalid file extension: {ext}. Allowed: {allowed}",
+        "too_large": "File too large: {size}MB. Maximum: {max}MB",
+        "empty_file": "Empty file uploaded",
+        "not_image": "File is not a valid image",
+        "no_injury": "No injury detected in this photo. Please take a clear, close-up photo of the wound.",
+        "analysis_failed": "Analysis failed: {error}",
+        "chat_mock": "This is a demo response. To get real AI responses, please configure your Google Cloud API keys.",
+    },
+    "pl": {
+        "invalid_type": "Nieobsługiwany typ pliku: {ctype}. Dozwolone: {allowed}",
+        "invalid_ext": "Nieobsługiwane rozszerzenie pliku: {ext}. Dozwolone: {allowed}",
+        "too_large": "Plik jest za duży: {size} MB. Maksymalnie: {max} MB",
+        "empty_file": "Przesłano pusty plik",
+        "not_image": "Plik nie jest prawidłowym obrazem",
+        "no_injury": "Nie wykryto urazu na tym zdjęciu. Zrób wyraźne zdjęcie rany z bliska.",
+        "analysis_failed": "Analiza nie powiodła się: {error}",
+        "chat_mock": "To jest odpowiedź demonstracyjna. Aby otrzymywać prawdziwe odpowiedzi AI, skonfiguruj klucze Google Cloud.",
+    },
+}
+
+
+def tr(lang: str, key: str, **kwargs) -> str:
+    """Translate an API message into the given language."""
+    return MESSAGES[normalize_lang(lang)][key].format(**kwargs)
+
+
 # Flat lookup for backward compatibility: returns first matching severity scenario
-def get_scenario_for_diagnosis(wound_type: str, severity: str) -> List[str]:
-    """Get scenario steps for a given wound type and severity."""
-    type_scenarios = scenario_dict.get(wound_type, {})
+def get_scenario_for_diagnosis(wound_type: str, severity: str, lang: str = DEFAULT_API_LANG) -> List[str]:
+    """Get scenario steps for a given wound type, severity and language."""
+    type_scenarios = SCENARIOS[normalize_lang(lang)].get(wound_type, {})
     if isinstance(type_scenarios, dict):
         return type_scenarios.get(severity, type_scenarios.get("Moderate", []))
     # Backward compat: if it's a flat list
     return type_scenarios if isinstance(type_scenarios, list) else []
+
+
+def get_all_scenarios(wound_type: str, severity: str) -> Dict[str, List[str]]:
+    """Scenario steps in every supported language (lets the UI switch language without re-analyzing)."""
+    return {lang: get_scenario_for_diagnosis(wound_type, severity, lang) for lang in SCENARIOS}
 
 
 # Chat system instruction
@@ -447,12 +747,28 @@ system_instruction_model_more_info = (
     "Provide a calm, actionable response limited to a maximum of 3 short sentences."
 )
 
+# Appended to the chat instruction so answers match the app language
+CHAT_LANGUAGE_RULE = {
+    "en": " Always respond in English.",
+    "pl": " Always respond in Polish.",
+}
+
 # Transcription system instruction — Gemini multimodal STT for iOS voice control
 transcription_instruction = (
     "You are a speech-to-text engine. Transcribe the spoken audio. "
     "Return ONLY the spoken words in lowercase English, no punctuation, no quotes, no explanation. "
     "If the audio is silent or unclear, return an empty string."
 )
+
+TRANSCRIPTION_INSTRUCTIONS = {
+    "en": transcription_instruction,
+    "pl": (
+        "You are a speech-to-text engine. Transcribe the spoken audio. The speaker speaks Polish. "
+        "Return ONLY the spoken words in lowercase Polish (keep Polish diacritics), "
+        "no punctuation, no quotes, no explanation. "
+        "If the audio is silent or unclear, return an empty string."
+    ),
+}
 
 
 # ============================================================================
@@ -464,15 +780,18 @@ class AudioRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     history: List[Dict]
+    lang: str = DEFAULT_API_LANG
 
 
 @app.get("/", response_class=HTMLResponse)
 def home():
     try:
         with open("index.html", "r", encoding="utf-8") as f:
-            return f.read()
+            html = f.read()
     except FileNotFoundError:
         raise HTTPException(status_code=500, detail="index.html not found")
+    # Serve assets from the versioned path (see ASSET_VERSION)
+    return html.replace('"/static/', f'"/static/{ASSET_VERSION}/')
 
 
 @app.get("/phone", response_class=HTMLResponse)
@@ -490,13 +809,15 @@ def phone():
 # ---------------------------------------------------------------------------
 @app.post("/analyze")
 @limiter.limit("10/minute")
-async def analyze(request: Request, file: UploadFile = File(...)):
+async def analyze(request: Request, file: UploadFile = File(...), lang: str = Form(DEFAULT_API_LANG)):
+    lang = normalize_lang(lang)
+
     # --- File validation ---
     # Check MIME type
     if file.content_type not in ALLOWED_MIME_TYPES:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file type: {file.content_type}. Allowed: {', '.join(ALLOWED_MIME_TYPES)}"
+            detail=tr(lang, "invalid_type", ctype=file.content_type, allowed=", ".join(ALLOWED_MIME_TYPES)),
         )
 
     # Check extension
@@ -505,19 +826,22 @@ async def analyze(request: Request, file: UploadFile = File(...)):
     if ext and ext not in ALLOWED_EXTENSIONS:
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid file extension: {ext}. Allowed: {', '.join(ALLOWED_EXTENSIONS)}"
+            detail=tr(lang, "invalid_ext", ext=ext, allowed=", ".join(ALLOWED_EXTENSIONS)),
         )
 
     # Read and check size
     contents = await file.read()
     if len(contents) > MAX_FILE_SIZE_BYTES:
+        size_mb = f"{len(contents) / 1024 / 1024:.1f}"
+        if lang == "pl":
+            size_mb = size_mb.replace(".", ",")  # Polish decimal comma
         raise HTTPException(
             status_code=400,
-            detail=f"File too large: {len(contents) / 1024 / 1024:.1f}MB. Maximum: {MAX_FILE_SIZE_MB}MB"
+            detail=tr(lang, "too_large", size=size_mb, max=MAX_FILE_SIZE_MB),
         )
 
     if len(contents) == 0:
-        raise HTTPException(status_code=400, detail="Empty file uploaded")
+        raise HTTPException(status_code=400, detail=tr(lang, "empty_file"))
 
     # Validate it's actually an image
     try:
@@ -525,7 +849,7 @@ async def analyze(request: Request, file: UploadFile = File(...)):
         img.verify()  # Verify it's a valid image
         img = PIL.Image.open(io.BytesIO(contents))  # Re-open after verify
     except Exception:
-        raise HTTPException(status_code=400, detail="File is not a valid image")
+        raise HTTPException(status_code=400, detail=tr(lang, "not_image"))
 
     # --- Mock response for demo ---
     if genai_client is None:
@@ -534,7 +858,8 @@ async def analyze(request: Request, file: UploadFile = File(...)):
         return {
             "diagnosis": wound_type,
             "severity": severity,
-            "scenario_array": get_scenario_for_diagnosis(wound_type, severity),
+            "scenario_array": get_scenario_for_diagnosis(wound_type, severity, lang),
+            "scenarios": get_all_scenarios(wound_type, severity),
             "mock": True,
         }
 
@@ -566,20 +891,17 @@ async def analyze(request: Request, file: UploadFile = File(...)):
         wound_type, severity = parse_classification(raw_response)
 
         if wound_type is None:
-            return {
-                "error": "No injury detected in this photo. Please take a clear, close-up photo of the wound.",
-            }
-
-        scenario = get_scenario_for_diagnosis(wound_type, severity)
+            return {"error": tr(lang, "no_injury")}
 
         return {
             "diagnosis": wound_type,
             "severity": severity,
-            "scenario_array": scenario,
+            "scenario_array": get_scenario_for_diagnosis(wound_type, severity, lang),
+            "scenarios": get_all_scenarios(wound_type, severity),
         }
     except Exception as e:
         print(f"[ERROR] Analysis failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=tr(lang, "analysis_failed", error=str(e)))
 
 
 def parse_classification(raw: str) -> tuple:
@@ -630,12 +952,11 @@ def parse_classification(raw: str) -> tuple:
 @app.post("/more")
 @limiter.limit("20/minute")
 async def more(request: Request, chat_request: ChatRequest):
+    lang = normalize_lang(chat_request.lang)
+
     # Mock response for demo
     if genai_client is None:
-        return {
-            "text": "This is a demo response. To get real AI responses, please configure your Google Cloud API keys.",
-            "mock": True,
-        }
+        return {"text": tr(lang, "chat_mock"), "mock": True}
 
     try:
         full_history = chat_request.history
@@ -657,7 +978,7 @@ async def more(request: Request, chat_request: ChatRequest):
             model=GEMINI_MODEL,
             history=formatted_history,
             config=types.GenerateContentConfig(
-                system_instruction=system_instruction_model_more_info,
+                system_instruction=system_instruction_model_more_info + CHAT_LANGUAGE_RULE[lang],
                 temperature=0.3,
                 max_output_tokens=2048,
                 safety_settings=SAFETY_SETTINGS,
@@ -690,7 +1011,9 @@ MAX_AUDIO_BYTES = 5 * 1024 * 1024  # 5MB — covers ~30s of typical recording
 
 @app.post("/transcribe")
 @limiter.limit("60/minute")
-async def transcribe(request: Request, file: UploadFile = File(...)):
+async def transcribe(request: Request, file: UploadFile = File(...), lang: str = Form(DEFAULT_API_LANG)):
+    lang = normalize_lang(lang)
+
     # Validate MIME (lenient — browsers report variations)
     ctype = (file.content_type or "").lower().split(";")[0].strip()
     base_allowed = {m.split(";")[0] for m in ALLOWED_AUDIO_MIMES}
@@ -718,15 +1041,15 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
             model=GEMINI_FAST_MODEL,
             contents=[audio_part, "Transcribe the spoken words. Return only the words, lowercase, no punctuation."],
             config=types.GenerateContentConfig(
-                system_instruction=transcription_instruction,
+                system_instruction=TRANSCRIPTION_INSTRUCTIONS[lang],
                 temperature=0.0,
                 max_output_tokens=1024,
                 safety_settings=SAFETY_SETTINGS,
             ),
         )
         text = (response.text or "").strip().lower()
-        # Strip surrounding quotes if Gemini adds them
-        text = text.strip('"\'`')
+        # Strip surrounding quotes if Gemini adds them (incl. Polish „…” and typographic quotes)
+        text = text.strip('"\'`„”“‚‘’«»')
         return {"transcript": text}
     except Exception as e:
         print(f"[ERROR /transcribe]: {e}")
@@ -781,6 +1104,31 @@ def get_safe_filename(text: str) -> str:
     return f"{filename}.mp3"
 
 
+# ElevenLabs voice per language. Both defaults are ElevenLabs "Default" voices,
+# which ElevenLabs retires on 2026-12-31 — set ELEVENLABS_VOICE_EN / _PL to voices
+# from your own voice library (e.g. a native Polish voice) before then.
+LEGACY_EN_VOICE = "JBFqnCBsd6RMkjVDRZzb"  # George — the voice of the recordings in recordings/
+ELEVENLABS_VOICES = {
+    "en": os.getenv("ELEVENLABS_VOICE_EN", LEGACY_EN_VOICE),
+    "pl": os.getenv("ELEVENLABS_VOICE_PL", "EXAVITQu4vr4xnSDxMaL"),  # Sarah
+}
+POLISH_TO_ASCII = str.maketrans("ąćęłńóśźż", "acelnoszz")
+
+
+def get_audio_filename(text: str, lang: str, voice_id: str) -> str:
+    """
+    Cache file name for a TTS recording. English with the original voice keeps
+    the legacy naming so the recordings already in recordings/ are reused; any
+    other language/voice gets a readable prefix plus a hash of voice and text,
+    so changing a voice re-generates its audio instead of serving the old one.
+    """
+    if lang == "en" and voice_id == LEGACY_EN_VOICE:
+        return get_safe_filename(text)
+    stem = re.sub(r"[^a-z0-9]+", "_", text.lower().translate(POLISH_TO_ASCII)).strip("_")[:40]
+    digest = hashlib.sha1(f"{voice_id}|{text}".encode("utf-8")).hexdigest()[:10]
+    return f"{lang}_{stem}_{digest}.mp3"
+
+
 RECORDINGS_DIR = "recordings"
 if not os.path.exists(RECORDINGS_DIR):
     os.makedirs(RECORDINGS_DIR)
@@ -788,12 +1136,14 @@ if not os.path.exists(RECORDINGS_DIR):
 
 @app.get("/get_audio")
 @limiter.limit("30/minute")
-async def get_audio(request: Request, prompt: str):
+async def get_audio(request: Request, prompt: str, lang: str = DEFAULT_API_LANG):
     prompt_text = prompt.strip()
     if not prompt_text:
         raise HTTPException(status_code=400, detail="Empty prompt")
 
-    filename = get_safe_filename(prompt_text)
+    lang = normalize_lang(lang)
+    voice_id = ELEVENLABS_VOICES[lang]
+    filename = get_audio_filename(prompt_text, lang, voice_id)
     file_path = os.path.join(RECORDINGS_DIR, filename)
 
     # Serve from cache
@@ -813,7 +1163,7 @@ async def get_audio(request: Request, prompt: str):
         # ElevenLabs SDK v1.x uses .convert() instead of .stream()
         audio_data_iterator = elevenlabs_client.text_to_speech.convert(
             text=prompt_text,
-            voice_id="JBFqnCBsd6RMkjVDRZzb",
+            voice_id=voice_id,
             model_id="eleven_multilingual_v2",
             output_format="mp3_44100_128",
         )

@@ -7,7 +7,10 @@ export const state = {
     isProcessActive: false,
     selectedFile: null,
 
-    // Voice assistant
+    // Last diagnosis: { type, severity, scenarios: { pl: [...], en: [...] } }
+    diagnosis: null,
+
+    // Voice assistant — scenarioArray is the welcome message + steps in the current language
     scenarioArray: [],
     currentScenarioIndex: 0,
     isChatMode: false,

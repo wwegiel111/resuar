@@ -8,7 +8,7 @@ Rescuar is a web-based application that helps users respond to medical emergenci
 - **Analyzing injury images** using Google's Gemini AI to classify wounds (burns, cuts, etc.)
 - **Providing step-by-step guidance** tailored to the specific injury type
 - **Offering voice-based interaction** with text-to-speech for hands-free operation
-- **Supporting multilingual assistance** with audio responses in multiple languages
+- **Speaking Polish and English** — the app starts in Polish; the globe button in the navigation switches the whole app (screens, first aid steps, voice assistant, AI chat) to English and back
 
 ## Features
 
@@ -20,7 +20,8 @@ Rescuar is a web-based application that helps users respond to medical emergenci
 ### 🎙️ Voice-Guided Instructions
 - Text-to-speech audio guidance for each first aid step
 - Cached audio responses for faster retrieval
-- Multilingual support via ElevenLabs API
+- Polish and English, each read by its own ElevenLabs voice
+- Voice commands in both languages: "dalej" / "next", "powtórz" / "repeat", "pytanie" / "more", "stop"
 - Hands-free operation for emergency situations
 
 ### 💬 Conversational Support
@@ -87,18 +88,22 @@ Analyzes an uploaded injury image and returns diagnosis and guidance steps.
 
 **Request:**
 - `file`: Image file (JPEG, PNG, etc.)
+- `lang`: `pl` or `en` (form field, defaults to `en`)
 
 **Response:**
 ```json
 {
-  "diagnosis": "Poparzenie",
-  "scenario_array": [
-    "Run cool water over the area of the burn...",
-    "Calm and reassure the person...",
-    ...
-  ]
+  "diagnosis": "Burn",
+  "severity": "Moderate",
+  "scenario_array": ["Schładzaj oparzone miejsce chłodną wodą...", "..."],
+  "scenarios": {
+    "en": ["Run cool water over the area of the burn...", "..."],
+    "pl": ["Schładzaj oparzone miejsce chłodną wodą...", "..."]
+  }
 }
 ```
+
+`scenario_array` is in the requested language; `scenarios` holds every language so the app can switch language without re-analyzing. Photos without a visible injury return `{"error": "..."}` in the requested language.
 
 ### `POST /more`
 Provides clarification or additional guidance based on conversation history.
@@ -109,9 +114,12 @@ Provides clarification or additional guidance based on conversation history.
   "history": [
     {"role": "user", "parts": ["What should I do?"]},
     {"role": "model", "parts": ["First aid step..."]}
-  ]
+  ],
+  "lang": "pl"
 }
 ```
+
+The answer is given in `lang` (`pl` or `en`, defaults to `en`).
 
 **Response:**
 ```json
@@ -125,6 +133,7 @@ Generates or retrieves cached audio for a given prompt using text-to-speech.
 
 **Query Parameters:**
 - `prompt`: Text to convert to speech
+- `lang`: `pl` or `en` (defaults to `en`) — picks the voice (`ELEVENLABS_VOICE_PL` / `ELEVENLABS_VOICE_EN`)
 
 **Response:** MP3 audio file
 
@@ -161,11 +170,9 @@ resuar/
 
 ### Supported Injury Types
 
-Currently configured scenarios:
-- **Poparzenie** (Polish for "Burn"): Multi-step cooling and care protocol
-- **Rozcięcie** (Polish for "Cut"): Cleaning and bandaging protocol
+Burn, Cut, Bruise, Scrape, Puncture, Sprain, Fracture and Bite, each with Mild / Moderate / Severe steps.
 
-Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
+Scenarios live in `main.py`: `scenario_dict` (English) and `scenario_dict_pl` (Polish). Both must have the same wound types, severities and number of steps, so the voice assistant can switch language mid-procedure. UI texts are in `static/js/i18n.js`.
 
 ### AI Models
 
@@ -183,7 +190,11 @@ Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
 | `GEMINI_MODEL` | Gemini model ID for the chat | No (defaults to "gemini-3.8-flash") |
 | `GEMINI_FAST_MODEL` | Gemini model ID for image classification and transcription | No (defaults to "gemini-3.5-flash-lite") |
 | `ELEVENLABS_API_KEY` | ElevenLabs API key for text-to-speech | Yes |
+| `ELEVENLABS_VOICE_PL` | ElevenLabs voice ID for Polish | No (defaults to "EXAVITQu4vr4xnSDxMaL" — Sarah) |
+| `ELEVENLABS_VOICE_EN` | ElevenLabs voice ID for English | No (defaults to "JBFqnCBsd6RMkjVDRZzb" — George) |
 | `PORT` | Server port | No (defaults to 8000) |
+
+Both default voices are ElevenLabs "Default" voices, which ElevenLabs retires on December 31, 2026 (and accounts created after March 2026 can't use them). For a native-sounding Polish voice, add one from the ElevenLabs Voice Library to My Voices, copy its voice ID and set `ELEVENLABS_VOICE_PL`.
 
 ## Error Handling
 

@@ -3,6 +3,7 @@
  */
 import { initScan } from './scan.js';
 import { updateProfile } from './profile.js';
+import { initI18n } from './i18n.js';
 
 // Side-effect imports: these modules register global handlers on import
 import './navigation.js';
@@ -14,6 +15,7 @@ import './diagnosis.js';
 
 // Initialize on DOM ready
 document.addEventListener('DOMContentLoaded', () => {
+    initI18n();
     initScan();
     updateProfile();
 });

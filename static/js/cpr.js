@@ -3,10 +3,11 @@
  */
 import { $, vibrate } from './dom.js';
 import { state } from './state.js';
+import { t } from './i18n.js';
 
 const CPR_STEPS = [
-    { title: '30 Compressions', sub: 'Push hard and fast (100-120 BPM)', time: 18, class: 'pulsing' },
-    { title: '2 Rescue Breaths', sub: 'Tilt head back, give 2 breaths', time: 5, class: 'breathing pulsing' },
+    { title: 'cpr.compressions', sub: 'cpr.compressionsSub', time: 18, class: 'pulsing' },
+    { title: 'cpr.breaths', sub: 'cpr.breathsSub', time: 5, class: 'breathing pulsing' },
 ];
 
 function getAudioCtx() {
@@ -70,8 +71,8 @@ function manageMetronome(forceStop = false) {
 function updateCprUI() {
     const step = CPR_STEPS[state.cprPhase];
     $('cprTimerDisplay').textContent = state.cprTime.toString().padStart(2, '0');
-    $('cprInstruction').textContent = step.title;
-    $('cprSubInstruction').textContent = step.sub;
+    $('cprInstruction').textContent = t(step.title);
+    $('cprSubInstruction').textContent = t(step.sub);
     $('cprPulseCircle').className = 'cpr-circle ' + step.class;
 }
 
@@ -103,8 +104,8 @@ function beginCprCycle() {
                 manageMetronome(true);
 
                 const nextPhase = (state.cprPhase + 1) % 2;
-                $('cprInstruction').textContent = 'Get Ready...';
-                $('cprSubInstruction').textContent = nextPhase === 0 ? 'Prepare for Compressions' : 'Prepare for Breaths';
+                $('cprInstruction').textContent = t('cpr.getReady');
+                $('cprSubInstruction').textContent = t(nextPhase === 0 ? 'cpr.prepCompressions' : 'cpr.prepBreaths');
                 $('cprPulseCircle').className = 'cpr-circle transition-mode';
                 $('cprTimerDisplay').textContent = state.transitionTime.toString().padStart(2, '0');
             } else {
@@ -122,12 +123,16 @@ export function stopCpr() {
     clearInterval(state.cprInterval);
     manageMetronome(true);
 
-    $('btnCprToggle').innerHTML = '<i class="fas fa-play"></i> Start CPR';
     $('btnCprToggle').style.background = 'var(--danger-color)';
     $('cprTimerDisplay').textContent = '00';
-    $('cprInstruction').textContent = 'Ready for CPR';
-    $('cprSubInstruction').textContent = 'Press start to follow the rhythm.';
     $('cprPulseCircle').className = 'cpr-circle';
+    renderIdleText();
+}
+
+function renderIdleText() {
+    $('btnCprToggle').innerHTML = `<i class="fas fa-play"></i> ${t('cpr.start')}`;
+    $('cprInstruction').textContent = t('cpr.ready');
+    $('cprSubInstruction').textContent = t('cpr.readySub');
 }
 
 function startCprCountdown() {
@@ -135,10 +140,10 @@ function startCprCountdown() {
     let prepTime = 3;
     getAudioCtx();
 
-    $('btnCprToggle').innerHTML = '<i class="fas fa-stop"></i> Stop CPR';
+    $('btnCprToggle').innerHTML = `<i class="fas fa-stop"></i> ${t('cpr.stop')}`;
     $('btnCprToggle').style.background = 'var(--text-muted)';
-    $('cprInstruction').textContent = 'Get Ready...';
-    $('cprSubInstruction').textContent = 'Starting in...';
+    $('cprInstruction').textContent = t('cpr.getReady');
+    $('cprSubInstruction').textContent = t('cpr.startingIn');
     $('cprPulseCircle').className = 'cpr-circle transition-mode';
     $('cprTimerDisplay').textContent = '0' + prepTime;
     vibrate(100);
@@ -160,6 +165,15 @@ export function toggleCpr() {
     if (state.isCprRunning) stopCpr();
     else startCprCountdown();
 }
+
+// While CPR runs the instruction refreshes on the next tick; only the button needs it now
+window.addEventListener('langchange', () => {
+    if (state.isCprRunning) {
+        $('btnCprToggle').innerHTML = `<i class="fas fa-stop"></i> ${t('cpr.stop')}`;
+    } else {
+        renderIdleText();
+    }
+});
 
 // Expose to global scope
 window.toggleCpr = toggleCpr;

@@ -415,7 +415,7 @@ h1 {
     font-weight: 700;
     margin-bottom: 8px;
     color: var(--text-dark);
-    text-transform: capitalize;
+    /* No text-transform: names come pre-cased from i18n ("Rana kłuta", not "Rana Kłuta") */
 }
 
 .diag-subtitle {

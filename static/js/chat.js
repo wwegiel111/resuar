@@ -3,6 +3,7 @@
  */
 import { $ } from './dom.js';
 import { askMore } from './api.js';
+import { t } from './i18n.js';
 
 // Persistent chat history for the session (Gemini format)
 const chatHistory = [];
@@ -24,7 +25,7 @@ export async function sendChatMessage() {
     input.disabled = true;
 
     // Show typing indicator
-    const typingEl = appendMessage(chatMessages, '<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;"></i> Thinking...', 'ai');
+    const typingEl = appendMessage(chatMessages, `<i class="fas fa-circle-notch fa-spin" style="margin-right:6px;"></i> ${t('chat.thinking')}`, 'ai');
 
     // Add to history
     chatHistory.push({ role: 'user', parts: [text] });
@@ -41,7 +42,7 @@ export async function sendChatMessage() {
         console.error('[Chat] Error:', error);
         typingEl.innerHTML =
             '<i class="fas fa-exclamation-triangle" style="color:var(--danger-color); margin-right:6px;"></i> ' +
-            'Could not reach the AI. Please try again.';
+            t('chat.error');
         // Remove failed message from history so user can retry
         chatHistory.pop();
     }

@@ -15,6 +15,7 @@ import { $ } from './dom.js';
 import { state } from './state.js';
 import { askMore, getAudioUrl, transcribeAudio } from './api.js';
 import { switchScreen } from './navigation.js';
+import { t, woundName } from './i18n.js';
 
 // --- Single Audio element reused across the session (iOS unlock) ---
 let sharedAudio = null;
@@ -40,6 +41,23 @@ const SPEECH_MIN_MS = 100;       // start recording almost immediately when spee
 const SILENCE_END_MS = 1800;     // wait longer before cutting off (user might pause between words)
 const MAX_RECORDING_MS = 20000;  // safety cap per utterance
 const VAD_INTERVAL_MS = 30;      // check every 30ms for responsiveness
+
+// Voice commands in both languages, matched as whole words on text without
+// diacritics ("powtórz" → "powtorz"), so e.g. "stopa" (foot) is not "stop".
+const COMMAND_PATTERNS = {
+    next: /\b(next|dalej|nastepn\w*|kolejn\w*)\b/,
+    repeat: /\b(repeat|powtorz\w*|jeszcze raz)\b/,
+    more: /\b(more|question|pytani\w*|wiecej)\b/,
+    stop: /\b(stop|zakoncz\w*|koniec)\b/,
+};
+// In Q&A mode only a short utterance counts as "next" — a question such as
+// "co robić dalej po schłodzeniu?" goes to the AI instead.
+const MAX_COMMAND_WORDS_IN_QA = 3;
+
+// Current status line, kept as a key so it can be re-rendered on language change
+let status = null;
+// True while the step text area shows an AI answer instead of the current step
+let showingAnswer = false;
 
 function ensureAudioUnlocked() {
     if (sharedAudio) return sharedAudio;
@@ -90,7 +108,7 @@ async function initMic() {
         return true;
     } catch (err) {
         console.error('[Voice] Mic init failed:', err);
-        $('transcriptionText').textContent = 'Microphone access denied. Voice control unavailable.';
+        $('transcriptionText').textContent = t('voice.micDenied');
         return false;
     }
 }
@@ -99,7 +117,7 @@ function teardownMic() {
     cancelVadLoop();
     stopRecording(true);
     if (micStream) {
-        micStream.getTracks().forEach(t => t.stop());
+        micStream.getTracks().forEach(track => track.stop());
         micStream = null;
     }
     if (audioCtx) {
@@ -115,6 +133,10 @@ function cancelVadLoop() {
         clearInterval(vadRafId);
         vadRafId = null;
     }
+}
+
+function listeningHint() {
+    return t(state.isChatMode ? 'voice.hintQa' : 'voice.hintSteps');
 }
 
 // --- VAD loop: continuously analyze mic input, start/stop recording on energy ---
@@ -145,10 +167,7 @@ function startVadLoop() {
         if (transcriptionEl && state.isVoiceActive) {
             const bars = rms > VAD_THRESHOLD ? '🟢' : '⚪';
             if (!speechDetectedAt && !isRecording) {
-                const baseText = state.isChatMode
-                    ? 'Q&A mode — Ask a question, or say/tap "next"'
-                    : 'Listening... say or tap: "next", "repeat", "more"';
-                transcriptionEl.textContent = `${bars} ${baseText}`;
+                transcriptionEl.textContent = `${bars} ${listeningHint()}`;
             }
         }
 
@@ -212,7 +231,7 @@ function startRecording() {
                 return;
             }
 
-            $('vgStatusText').textContent = '⏳ Processing...';
+            setVgStatus('voice.processing', {}, '⏳');
             try {
                 const transcript = await transcribeAudio(blob);
                 console.log('[Voice] Transcribed:', transcript);
@@ -223,7 +242,7 @@ function startRecording() {
                     return;
                 }
                 showHeard(transcript);
-                setVgStatus(`You said: "${transcript}"`);
+                setVgStatus('voice.youSaid', { text: transcript });
                 handleVoiceCommand(transcript);
             } catch (err) {
                 console.error('[Voice] Transcribe error:', err);
@@ -234,7 +253,7 @@ function startRecording() {
         // Use timeslice to ensure ondataavailable fires on iOS Safari
         mediaRecorder.start(250);
         isRecording = true;
-        setVgStatus('🔴 Recording...');
+        setVgStatus('voice.recording', {}, '🔴');
     } catch (err) {
         console.error('[Voice] startRecording error:', err);
         isRecording = false;
@@ -257,9 +276,19 @@ function stopRecording(silent) {
 }
 
 // --- Public API ---
+
+/** Start/Stop label of the button on the diagnosis screen */
+export function renderVoiceButton() {
+    const btn = $('btnVoiceAssistant');
+    if (!btn) return;
+    btn.innerHTML = state.isVoiceActive
+        ? `<i class="fas fa-stop-circle"></i> ${t('diag.stopVoice')}`
+        : `<i class="fas fa-microphone"></i> ${t('diag.startVoice')}`;
+}
+
 export async function toggleVoiceAssistant() {
     if (state.isVoiceActive) {
-        if (!confirm('Are you sure you want to stop the Voice Assistant?')) return;
+        if (!confirm(t('voice.confirmStop'))) return;
         stopVoiceAssistant();
         return;
     }
@@ -272,9 +301,9 @@ export async function toggleVoiceAssistant() {
     state.isVoiceActive = true;
     const btnVoice = $('btnVoiceAssistant');
     btnVoice.classList.add('active');
-    btnVoice.innerHTML = '<i class="fas fa-stop-circle"></i> Stop Voice Assistant';
+    renderVoiceButton();
     $('transcriptionCard').style.display = 'block';
-    $('transcriptionText').textContent = 'Starting voice assistant...';
+    $('transcriptionText').textContent = t('voice.starting');
 
     state.currentScenarioIndex = 0;
     state.isChatMode = false;
@@ -283,9 +312,7 @@ export async function toggleVoiceAssistant() {
     updateVoiceControlsUI();
 
     // Switch to dedicated voice guide screen
-    const diagTitle = $('diagTitle');
-    const title = diagTitle ? diagTitle.textContent : 'Voice Guidance';
-    $('voiceGuideTitle').textContent = `${title} · Live`;
+    $('voiceGuideTitle').textContent = guideTitle();
     switchScreen('voiceGuideScreen', null, -1);
     updateVoiceGuideUI();
 
@@ -295,6 +322,7 @@ export async function toggleVoiceAssistant() {
 export function stopVoiceAssistant() {
     state.isVoiceActive = false;
     state.isChatMode = false;
+    status = null;
 
     if (sharedAudio) {
         try {
@@ -310,7 +338,7 @@ export function stopVoiceAssistant() {
     const btnVoice = $('btnVoiceAssistant');
     if (btnVoice) {
         btnVoice.classList.remove('active');
-        btnVoice.innerHTML = '<i class="fas fa-microphone"></i> Start Voice Assistant';
+        renderVoiceButton();
     }
     const tc = $('transcriptionCard');
     if (tc) tc.style.display = 'none';
@@ -321,16 +349,30 @@ export function stopVoiceAssistant() {
     switchScreen('diagnosisScreen', null, 2);
 }
 
+/** Re-render the voice guide in the current language (called on language change) */
+export function refreshVoiceGuide() {
+    renderVoiceButton();
+    if (!state.isVoiceActive) return;
+    $('voiceGuideTitle').textContent = guideTitle();
+    renderStepInfo(!showingAnswer);
+    renderStatus();
+}
+
+function guideTitle() {
+    const name = state.diagnosis ? woundName(state.diagnosis.type) : t('voice.title');
+    return `${name} · ${t('voice.live')}`;
+}
+
 function readScenarioStepByStep() {
     if (!state.isVoiceActive) return;
 
     if (!state.scenarioArray || state.scenarioArray.length === 0) {
-        setVgStatus('No scenario steps available.');
+        setVgStatus('voice.noSteps');
         return;
     }
 
     if (state.currentScenarioIndex >= state.scenarioArray.length) {
-        setVgStatus('✅ First aid procedure completed.');
+        setVgStatus('voice.completed', {}, '✅');
         setTimeout(() => stopVoiceAssistant(), 2000);
         return;
     }
@@ -340,20 +382,21 @@ function readScenarioStepByStep() {
     playStepAudio(text);
 }
 
-/** Update the voice guide screen UI with current step info */
-function updateVoiceGuideUI() {
+/** Step label, progress dots and (optionally) the step text */
+function renderStepInfo(includeText = true) {
     const total = state.scenarioArray.length;
     const current = state.currentScenarioIndex;
-    const text = state.scenarioArray[current] || '';
 
     // Step label (skip welcome message as "step 0")
-    const stepNum = current + 1;
     const stepLabel = $('vgStepLabel');
-    if (stepLabel) stepLabel.textContent = `STEP ${stepNum} OF ${total}`;
+    if (stepLabel) stepLabel.textContent = t('voice.stepLabel', { n: current + 1, total });
 
     // Step text
     const stepText = $('vgStepText');
-    if (stepText) stepText.textContent = text;
+    if (stepText && includeText) {
+        stepText.textContent = state.scenarioArray[current] || '';
+        showingAnswer = false;
+    }
 
     // Progress dots
     const progressEl = $('vgProgress');
@@ -366,11 +409,22 @@ function updateVoiceGuideUI() {
         }
         progressEl.innerHTML = dots;
     }
-
-    setVgStatus('🔊 Speaking...');
 }
 
-function setVgStatus(text) {
+/** Update the voice guide screen UI with current step info */
+function updateVoiceGuideUI() {
+    renderStepInfo();
+    setVgStatus('voice.speaking', {}, '🔊');
+}
+
+function setVgStatus(key, vars = {}, icon = '') {
+    status = { key, vars, icon };
+    renderStatus();
+}
+
+function renderStatus() {
+    if (!status) return;
+    const text = (status.icon ? `${status.icon} ` : '') + t(status.key, status.vars);
     const el = $('vgStatusText');
     if (el) el.textContent = text;
     // Also update old transcription card for backward compat
@@ -456,42 +510,49 @@ function playStepAudio(promptText) {
 
 function beginListening() {
     if (!state.isVoiceActive) return;
-    const statusText = state.isChatMode
-        ? '🎤 Q&A mode — Ask a question, or say/tap "next"...'
-        : '🎤 Listening... say or tap: "next", "repeat", "more"';
-    setVgStatus(statusText);
+    setVgStatus(state.isChatMode ? 'voice.hintQa' : 'voice.hintSteps', {}, '🎤');
     startVadLoop();
 }
 
+/** Lowercase and strip diacritics so commands match however STT spells them */
+function normalizeSpeech(text) {
+    return (text || '')
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '')
+        .replace(/ł/g, 'l');
+}
+
 function handleVoiceCommand(transcript) {
-    const t = (transcript || '').toLowerCase();
+    const text = normalizeSpeech(transcript);
 
     if (state.isChatMode) {
-        if (t.includes('next')) {
+        const wordCount = text.split(/\s+/).filter(Boolean).length;
+        if (wordCount <= MAX_COMMAND_WORDS_IN_QA && COMMAND_PATTERNS.next.test(text)) {
             state.isChatMode = false;
             updateVoiceControlsUI();
-            $('transcriptionText').textContent = 'Continuing to next step...';
+            $('transcriptionText').textContent = t('voice.continuing');
             state.currentScenarioIndex++;
             readScenarioStepByStep();
         } else {
-            askGeminiQuestion(t);
+            askGeminiQuestion(transcript);
         }
         return;
     }
 
-    if (t.includes('next')) {
+    if (COMMAND_PATTERNS.next.test(text)) {
         state.currentScenarioIndex++;
         readScenarioStepByStep();
-    } else if (t.includes('repeat')) {
+    } else if (COMMAND_PATTERNS.repeat.test(text)) {
         readScenarioStepByStep();
-    } else if (t.includes('more')) {
+    } else if (COMMAND_PATTERNS.more.test(text)) {
         state.isChatMode = true;
         updateVoiceControlsUI();
-        const info = 'Help mode activated. Ask your question, or say next to continue.';
+        const info = t('voice.helpMode');
         $('transcriptionText').textContent = info;
         playStepAudio(info);
-    } else if (t.includes('stop')) {
-        $('transcriptionText').textContent = 'Procedure stopped.';
+    } else if (COMMAND_PATTERNS.stop.test(text)) {
+        $('transcriptionText').textContent = t('voice.stopped');
         stopVoiceAssistant();
     } else {
         // Unrecognized — keep listening without re-prompting (mic is still warm)
@@ -502,11 +563,11 @@ function handleVoiceCommand(transcript) {
 async function askGeminiQuestion(userQuestion) {
     if (!state.isVoiceActive) return;
     try {
-        setVgStatus('🤔 Thinking...');
+        setVgStatus('voice.thinking', {}, '🤔');
         let questionForAI = userQuestion;
         if (state.messageHistory.length === 0) {
-            const ctx = state.scenarioArray[state.currentScenarioIndex] || 'No context';
-            questionForAI = `Context of current step: ${ctx}. My question is: ${userQuestion}`;
+            const ctx = state.scenarioArray[state.currentScenarioIndex] || t('voice.noContext');
+            questionForAI = t('voice.context', { step: ctx, question: userQuestion });
         }
         state.messageHistory.push({ role: 'user', parts: [questionForAI] });
         const answer = await askMore(state.messageHistory);
@@ -514,14 +575,16 @@ async function askGeminiQuestion(userQuestion) {
 
         // Show answer as the step text temporarily
         const stepText = $('vgStepText');
-        if (stepText) stepText.textContent = answer;
-        setVgStatus('🔊 Speaking...');
+        if (stepText) {
+            stepText.textContent = answer;
+            showingAnswer = true;
+        }
+        setVgStatus('voice.speaking', {}, '🔊');
         playStepAudio(answer);
     } catch (error) {
         console.error('[Voice] Q&A error:', error);
-        const errText = 'Communication error. Try asking again or say next.';
-        setVgStatus(errText);
-        if (state.isVoiceActive) playStepAudio(errText);
+        setVgStatus('voice.error');
+        if (state.isVoiceActive) playStepAudio(t('voice.error'));
     }
 }
 
