@@ -169,8 +169,8 @@ Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
 
 ### AI Models
 
-- **Image Classification**: `gemini-3.8-flash` (configurable via `GEMINI_MODEL`) with medical expert system instruction
-- **Conversation**: `gemini-3.8-flash` with emergency medical expert system instruction
+- **Image Classification & Speech-to-Text**: `gemini-3.5-flash-lite` (configurable via `GEMINI_FAST_MODEL`) — fast, returns "no injury detected" for photos without a wound
+- **Conversation**: `gemini-3.8-flash` (configurable via `GEMINI_MODEL`) with emergency medical expert system instruction
 - **Text-to-Speech**: ElevenLabs multilingual model (`eleven_multilingual_v2`)
 
 ## Environment Variables
@@ -180,7 +180,8 @@ Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
 | `GOOGLE_CREDS_JSON` | Google Cloud service account credentials (JSON) | Yes |
 | `GOOGLE_CLOUD_PROJECT` | Google Cloud project ID | No (defaults to `project_id` from the credentials JSON) |
 | `GOOGLE_CLOUD_LOCATION` | Vertex AI location | No (defaults to "global" — Gemini 3.x is not served from single regions like us-central1) |
-| `GEMINI_MODEL` | Gemini model ID | No (defaults to "gemini-3.8-flash") |
+| `GEMINI_MODEL` | Gemini model ID for the chat | No (defaults to "gemini-3.8-flash") |
+| `GEMINI_FAST_MODEL` | Gemini model ID for image classification and transcription | No (defaults to "gemini-3.5-flash-lite") |
 | `ELEVENLABS_API_KEY` | ElevenLabs API key for text-to-speech | Yes |
 | `PORT` | Server port | No (defaults to 8000) |
 

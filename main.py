@@ -94,6 +94,7 @@ ALLOWED_MIME_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif"}
 ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp", ".gif"}
 MAX_FILE_SIZE_MB = 10
 MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
+MAX_IMAGE_SIDE_PX = 1024  # images are downscaled to this before classification
 
 
 # ============================================================================
@@ -102,6 +103,9 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 # Gemini 3.x models on Vertex AI are served only from the "global" endpoint
 # (or the "us"/"eu" multi-regions), not from single regions like us-central1.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+# Faster model for latency-sensitive one-shot tasks (wound classification,
+# speech-to-text). Flash-Lite defaults to minimal thinking.
+GEMINI_FAST_MODEL = os.getenv("GEMINI_FAST_MODEL", "gemini-3.5-flash-lite")
 
 
 def setup_vertex_ai():
@@ -151,7 +155,8 @@ def setup_vertex_ai():
         print(f"⚠️  Failed to initialize Vertex AI client: {e} - using mock mode")
         return None
 
-    print(f"✓ Vertex AI initialized (project={project_id}, location={location}, model={GEMINI_MODEL})")
+    print(f"✓ Vertex AI initialized (project={project_id}, location={location}, "
+          f"model={GEMINI_MODEL}, fast_model={GEMINI_FAST_MODEL})")
     return client
 
 
@@ -170,6 +175,7 @@ SAFETY_SETTINGS = [
 
 # Gemini 3.x models think before answering and thinking tokens count toward
 # max_output_tokens — keep thinking low so short answers aren't cut off.
+# Used for GEMINI_MODEL only; the fast model keeps its own (minimal) default.
 THINKING_CONFIG = (
     types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW) if GOOGLE_AVAILABLE else None
 )
@@ -201,8 +207,12 @@ Burn|Moderate
 Cut|Mild
 Fracture|Severe
 
+If the image does NOT show an injury on a human or animal body (e.g. an object, landscape, screenshot, text, healthy skin, or a picture too blurry or dark to see any injury), respond with exactly:
+NONE
+
 Rules:
-- If the image is unclear, make your best assessment
+- Never guess a wound type for an image that shows no visible injury — respond NONE instead
+- If an injury is visible but details are unclear, make your best assessment
 - Severe means: deep tissue damage, heavy bleeding, bone visible, large area affected, or requires immediate professional medical attention
 - Moderate means: notable injury requiring careful first aid, possible infection risk, may need medical follow-up
 - Mild means: superficial, small area, manageable with basic first aid at home
@@ -519,20 +529,23 @@ async def analyze(request: Request, file: UploadFile = File(...)):
         }
 
     # --- AI Classification ---
+    # Downscale phone photos — smaller uploads mean faster responses, and
+    # 1024px is plenty to classify a wound. JPEG needs RGB (PNGs may be RGBA).
+    img = img.convert("RGB")
+    img.thumbnail((MAX_IMAGE_SIDE_PX, MAX_IMAGE_SIDE_PX))
     img_byte_arr = io.BytesIO()
-    img.save(img_byte_arr, format='JPEG')
+    img.save(img_byte_arr, format='JPEG', quality=85)
     image_part = types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
 
     try:
         response = await genai_client.aio.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=[image_part, "Classify this wound. Respond with TYPE|SEVERITY only."],
+            model=GEMINI_FAST_MODEL,
+            contents=[image_part, "Classify this wound. Respond with TYPE|SEVERITY, or NONE if no injury is visible."],
             config=types.GenerateContentConfig(
                 system_instruction=CLASSIFICATION_PROMPT,
                 temperature=0.0,
                 max_output_tokens=1024,
                 safety_settings=SAFETY_SETTINGS,
-                thinking_config=THINKING_CONFIG,
             ),
         )
 
@@ -541,6 +554,11 @@ async def analyze(request: Request, file: UploadFile = File(...)):
 
         # Parse TYPE|SEVERITY response
         wound_type, severity = parse_classification(raw_response)
+
+        if wound_type is None:
+            return {
+                "error": "No injury detected in this photo. Please take a clear, close-up photo of the wound.",
+            }
 
         scenario = get_scenario_for_diagnosis(wound_type, severity)
 
@@ -555,9 +573,16 @@ async def analyze(request: Request, file: UploadFile = File(...)):
 
 
 def parse_classification(raw: str) -> tuple:
-    """Parse AI response like 'Burn|Moderate' into (wound_type, severity)."""
+    """
+    Parse AI response like 'Burn|Moderate' into (wound_type, severity).
+    Returns (None, None) when no injury was detected or the response
+    names no known wound type.
+    """
     valid_types = set(scenario_dict.keys())
     valid_severities = {"Mild", "Moderate", "Severe"}
+
+    if raw.strip().upper().startswith("NONE"):
+        return None, None
 
     # Try pipe-separated format
     if "|" in raw:
@@ -570,7 +595,7 @@ def parse_classification(raw: str) -> tuple:
 
     # Fallback: try to find known words in the response
     raw_lower = raw.lower()
-    found_type = "Cut"  # default
+    found_type = None  # no known type → treat as no injury
     found_severity = "Moderate"  # default
 
     for t in valid_types:
@@ -582,6 +607,9 @@ def parse_classification(raw: str) -> tuple:
         if s.lower() in raw_lower:
             found_severity = s
             break
+
+    if found_type is None:
+        return None, None
 
     return found_type, found_severity
 
@@ -677,14 +705,13 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
     try:
         audio_part = types.Part.from_bytes(data=contents, mime_type=mime)
         response = await genai_client.aio.models.generate_content(
-            model=GEMINI_MODEL,
+            model=GEMINI_FAST_MODEL,
             contents=[audio_part, "Transcribe the spoken words. Return only the words, lowercase, no punctuation."],
             config=types.GenerateContentConfig(
                 system_instruction=transcription_instruction,
                 temperature=0.0,
                 max_output_tokens=1024,
                 safety_settings=SAFETY_SETTINGS,
-                thinking_config=THINKING_CONFIG,
             ),
         )
         text = (response.text or "").strip().lower()
