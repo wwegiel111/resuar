@@ -16,7 +16,6 @@ import os
 import re
 import io
 import json
-import tempfile
 from fastapi import FastAPI, UploadFile, File, Request, HTTPException
 from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
@@ -40,11 +39,9 @@ except ImportError:
 
 # Try to import Google and ElevenLabs, but allow graceful fallback
 try:
-    import vertexai
-    from vertexai.generative_models import (
-        GenerativeModel, Part, GenerationConfig,
-        HarmCategory, HarmBlockThreshold, Content
-    )
+    from google import genai
+    from google.genai import types
+    from google.oauth2 import service_account
     GOOGLE_AVAILABLE = True
 except ImportError:
     GOOGLE_AVAILABLE = False
@@ -102,53 +99,80 @@ MAX_FILE_SIZE_BYTES = MAX_FILE_SIZE_MB * 1024 * 1024
 # ============================================================================
 # [2] SECURE CREDENTIALS SETUP
 # ============================================================================
+# Gemini 3.x models on Vertex AI are served only from the "global" endpoint
+# (or the "us"/"eu" multi-regions), not from single regions like us-central1.
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+
+
 def setup_vertex_ai():
     """
     Securely parses GOOGLE_CREDS_JSON env var (a JSON string),
-    validates its structure, writes to a temp file with restricted permissions,
-    and initializes Vertex AI.
+    validates its structure, and returns a Gen AI client bound to Vertex AI.
+    Credentials are loaded in memory — nothing is written to disk.
+    Returns None (mock mode) if anything is missing or invalid.
     """
     if not GOOGLE_AVAILABLE:
         print("✓ Running in MOCK MODE (Google Cloud AI)")
-        return
+        return None
 
     creds_json_str = os.getenv("GOOGLE_CREDS_JSON")
-    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", "rescuar")
-    location = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+    location = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
 
     if not creds_json_str:
         print("⚠️  GOOGLE_CREDS_JSON not set - using mock mode")
-        return
+        return None
 
-    # Validate JSON structure before writing to disk
+    # Validate JSON structure
     try:
         creds_data = json.loads(creds_json_str)
         required_fields = ["type", "project_id", "private_key_id", "private_key"]
         missing = [f for f in required_fields if f not in creds_data]
         if missing:
             print(f"⚠️  Credentials JSON missing fields: {missing} - using mock mode")
-            return
+            return None
     except json.JSONDecodeError as e:
         print(f"⚠️  Invalid JSON in GOOGLE_CREDS_JSON: {e} - using mock mode")
-        return
+        return None
 
-    # Write to temp file with restricted permissions (owner-only read)
-    fd, temp_path = tempfile.mkstemp(suffix=".json", prefix="gcp_creds_")
+    project_id = os.getenv("GOOGLE_CLOUD_PROJECT", creds_data["project_id"])
+
     try:
-        os.fchmod(fd, 0o600)
-        with os.fdopen(fd, 'w') as f:
-            json.dump(creds_data, f)
+        credentials = service_account.Credentials.from_service_account_info(
+            creds_data,
+            scopes=["https://www.googleapis.com/auth/cloud-platform"],
+        )
+        client = genai.Client(
+            vertexai=True,
+            project=project_id,
+            location=location,
+            credentials=credentials,
+        )
     except Exception as e:
-        os.close(fd)
-        print(f"⚠️  Failed to write credentials: {e}")
-        return
+        print(f"⚠️  Failed to initialize Vertex AI client: {e} - using mock mode")
+        return None
 
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = temp_path
-    vertexai.init(project=project_id, location=location)
-    print(f"✓ Vertex AI initialized (project={project_id}, location={location})")
+    print(f"✓ Vertex AI initialized (project={project_id}, location={location}, model={GEMINI_MODEL})")
+    return client
 
 
-setup_vertex_ai()
+genai_client = setup_vertex_ai()
+
+# Safety settings shared by all Gemini calls — first-aid content must not be blocked
+SAFETY_SETTINGS = [
+    types.SafetySetting(category=category, threshold=types.HarmBlockThreshold.BLOCK_NONE)
+    for category in (
+        types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT,
+        types.HarmCategory.HARM_CATEGORY_HARASSMENT,
+        types.HarmCategory.HARM_CATEGORY_HATE_SPEECH,
+        types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
+    )
+] if GOOGLE_AVAILABLE else []
+
+# Gemini 3.x models think before answering and thinking tokens count toward
+# max_output_tokens — keep thinking low so short answers aren't cut off.
+THINKING_CONFIG = (
+    types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW) if GOOGLE_AVAILABLE else None
+)
 
 # Initialize ElevenLabs
 elevenlabs_client = None
@@ -183,11 +207,6 @@ Rules:
 - Moderate means: notable injury requiring careful first aid, possible infection risk, may need medical follow-up
 - Mild means: superficial, small area, manageable with basic first aid at home
 """
-
-if GOOGLE_AVAILABLE:
-    model = GenerativeModel("gemini-2.5-flash", system_instruction=CLASSIFICATION_PROMPT)
-else:
-    model = None
 
 # Comprehensive scenario dictionary: scenario_dict[wound_type][severity]
 scenario_dict = {
@@ -411,31 +430,19 @@ def get_scenario_for_diagnosis(wound_type: str, severity: str) -> List[str]:
     return type_scenarios if isinstance(type_scenarios, list) else []
 
 
-# Chat model
-if GOOGLE_AVAILABLE:
-    system_instruction_model_more_info = (
-        "You are an AI emergency medical expert. Analyze the conversation history "
-        "and clarify the user's query regarding the current first-aid step. "
-        "Provide a calm, actionable response limited to a maximum of 3 short sentences."
-    )
-    modelMoreInfo = GenerativeModel(
-        "gemini-2.5-flash",
-        system_instruction=system_instruction_model_more_info
-    )
+# Chat system instruction
+system_instruction_model_more_info = (
+    "You are an AI emergency medical expert. Analyze the conversation history "
+    "and clarify the user's query regarding the current first-aid step. "
+    "Provide a calm, actionable response limited to a maximum of 3 short sentences."
+)
 
-    # Transcription model — Gemini multimodal STT for iOS voice control
-    transcription_instruction = (
-        "You are a speech-to-text engine. Transcribe the spoken audio. "
-        "Return ONLY the spoken words in lowercase English, no punctuation, no quotes, no explanation. "
-        "If the audio is silent or unclear, return an empty string."
-    )
-    modelTranscribe = GenerativeModel(
-        "gemini-2.5-flash",
-        system_instruction=transcription_instruction
-    )
-else:
-    modelMoreInfo = None
-    modelTranscribe = None
+# Transcription system instruction — Gemini multimodal STT for iOS voice control
+transcription_instruction = (
+    "You are a speech-to-text engine. Transcribe the spoken audio. "
+    "Return ONLY the spoken words in lowercase English, no punctuation, no quotes, no explanation. "
+    "If the audio is silent or unclear, return an empty string."
+)
 
 
 # ============================================================================
@@ -501,7 +508,7 @@ async def analyze(request: Request, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="File is not a valid image")
 
     # --- Mock response for demo ---
-    if not GOOGLE_AVAILABLE or model is None:
+    if genai_client is None:
         wound_type = "Burn"
         severity = "Moderate"
         return {
@@ -514,23 +521,22 @@ async def analyze(request: Request, file: UploadFile = File(...)):
     # --- AI Classification ---
     img_byte_arr = io.BytesIO()
     img.save(img_byte_arr, format='JPEG')
-    image_part = Part.from_data(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
-
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    }
+    image_part = types.Part.from_bytes(data=img_byte_arr.getvalue(), mime_type="image/jpeg")
 
     try:
-        response = model.generate_content(
-            [image_part, "Classify this wound. Respond with TYPE|SEVERITY only."],
-            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=50),
-            safety_settings=safety_settings
+        response = await genai_client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[image_part, "Classify this wound. Respond with TYPE|SEVERITY only."],
+            config=types.GenerateContentConfig(
+                system_instruction=CLASSIFICATION_PROMPT,
+                temperature=0.0,
+                max_output_tokens=1024,
+                safety_settings=SAFETY_SETTINGS,
+                thinking_config=THINKING_CONFIG,
+            ),
         )
 
-        raw_response = response.text.strip()
+        raw_response = (response.text or "").strip()
         print(f"[AI] Raw classification: {raw_response}")
 
         # Parse TYPE|SEVERITY response
@@ -587,18 +593,11 @@ def parse_classification(raw: str) -> tuple:
 @limiter.limit("20/minute")
 async def more(request: Request, chat_request: ChatRequest):
     # Mock response for demo
-    if not GOOGLE_AVAILABLE or modelMoreInfo is None:
+    if genai_client is None:
         return {
             "text": "This is a demo response. To get real AI responses, please configure your Google Cloud API keys.",
             "mock": True,
         }
-
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    }
 
     try:
         full_history = chat_request.history
@@ -613,17 +612,23 @@ async def more(request: Request, chat_request: ChatRequest):
             role = msg.get("role", "user")
             text_part = msg.get("parts", [""])[0]
             formatted_history.append(
-                Content(role=role, parts=[Part.from_text(text_part)])
+                types.Content(role=role, parts=[types.Part.from_text(text=text_part)])
             )
 
-        chat = modelMoreInfo.start_chat(history=formatted_history)
-        response = chat.send_message(
-            user_message,
-            generation_config=GenerationConfig(temperature=0.3, max_output_tokens=1000),
-            safety_settings=safety_settings
+        chat = genai_client.aio.chats.create(
+            model=GEMINI_MODEL,
+            history=formatted_history,
+            config=types.GenerateContentConfig(
+                system_instruction=system_instruction_model_more_info,
+                temperature=0.3,
+                max_output_tokens=2048,
+                safety_settings=SAFETY_SETTINGS,
+                thinking_config=THINKING_CONFIG,
+            ),
         )
+        response = await chat.send_message(user_message)
 
-        return {"text": response.text.strip()}
+        return {"text": (response.text or "").strip()}
 
     except HTTPException:
         raise
@@ -661,7 +666,7 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="Audio too large")
 
     # Mock response for dev mode
-    if not GOOGLE_AVAILABLE or modelTranscribe is None:
+    if genai_client is None:
         return {"transcript": "", "mock": True}
 
     # Use the actual MIME the browser sent (Gemini accepts most common formats)
@@ -669,19 +674,18 @@ async def transcribe(request: Request, file: UploadFile = File(...)):
     if ";" in mime:
         mime = mime.split(";")[0]
 
-    safety_settings = {
-        HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
-        HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
-    }
-
     try:
-        audio_part = Part.from_data(data=contents, mime_type=mime)
-        response = modelTranscribe.generate_content(
-            [audio_part, "Transcribe the spoken words. Return only the words, lowercase, no punctuation."],
-            generation_config=GenerationConfig(temperature=0.0, max_output_tokens=200),
-            safety_settings=safety_settings,
+        audio_part = types.Part.from_bytes(data=contents, mime_type=mime)
+        response = await genai_client.aio.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=[audio_part, "Transcribe the spoken words. Return only the words, lowercase, no punctuation."],
+            config=types.GenerateContentConfig(
+                system_instruction=transcription_instruction,
+                temperature=0.0,
+                max_output_tokens=1024,
+                safety_settings=SAFETY_SETTINGS,
+                thinking_config=THINKING_CONFIG,
+            ),
         )
         text = (response.text or "").strip().lower()
         # Strip surrounding quotes if Gemini adds them

@@ -15,7 +15,7 @@ Rescuar is a web-based application that helps users respond to medical emergenci
 ### 🔍 Intelligent Image Analysis
 - Upload photos of injuries for AI-powered classification
 - Automatic detection of burn severity and wound types
-- Powered by Google Vertex AI (Gemini 2.5 Flash)
+- Powered by Google Vertex AI (Gemini 3.8 Flash, via the `google-genai` SDK)
 
 ### 🎙️ Voice-Guided Instructions
 - Text-to-speech audio guidance for each first aid step
@@ -36,14 +36,14 @@ Rescuar is a web-based application that helps users respond to medical emergenci
 ## Tech Stack
 
 - **Backend**: FastAPI (Python)
-- **AI/ML**: Google Vertex AI (Gemini 2.5 Flash)
+- **AI/ML**: Google Vertex AI (Gemini 3.8 Flash, `google-genai` SDK)
 - **Text-to-Speech**: ElevenLabs API
 - **Image Processing**: Pillow
 - **Frontend**: HTML/JavaScript (served via FastAPI)
 
 ## Prerequisites
 
-- Python 3.8+
+- Python 3.10+
 - Google Cloud Project with Vertex AI enabled
 - ElevenLabs API key
 - Environment variables configured (see Setup)
@@ -169,8 +169,8 @@ Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
 
 ### AI Models
 
-- **Image Classification**: `gemini-2.5-flash` with medical expert system instruction
-- **Conversation**: `gemini-2.5-flash` with emergency medical expert system instruction
+- **Image Classification**: `gemini-3.8-flash` (configurable via `GEMINI_MODEL`) with medical expert system instruction
+- **Conversation**: `gemini-3.8-flash` with emergency medical expert system instruction
 - **Text-to-Speech**: ElevenLabs multilingual model (`eleven_multilingual_v2`)
 
 ## Environment Variables
@@ -178,7 +178,9 @@ Additional scenarios can be added by extending the `scenario_dict` in `main.py`.
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `GOOGLE_CREDS_JSON` | Google Cloud service account credentials (JSON) | Yes |
-| `GOOGLE_CLOUD_PROJECT` | Google Cloud project ID | No (defaults to "rescuar") |
+| `GOOGLE_CLOUD_PROJECT` | Google Cloud project ID | No (defaults to `project_id` from the credentials JSON) |
+| `GOOGLE_CLOUD_LOCATION` | Vertex AI location | No (defaults to "global" — Gemini 3.x is not served from single regions like us-central1) |
+| `GEMINI_MODEL` | Gemini model ID | No (defaults to "gemini-3.8-flash") |
 | `ELEVENLABS_API_KEY` | ElevenLabs API key for text-to-speech | Yes |
 | `PORT` | Server port | No (defaults to 8000) |
 
